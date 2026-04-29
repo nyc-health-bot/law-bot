@@ -4,7 +4,13 @@
       "Bash(curl -s -L --max-time 30 -A \"Mozilla/5.0\" \"https://govt.westlaw.com/nycrr/Browse/Home/NewYork/UnofficialNewYorkCodesRulesandRegulations?guid=Id8627730b65511ddb903a4af59fec65a&originationContext=documenttoc&transitionType=Default&contextData=\\(sc.Default\\)\")",
       "Bash(python3 -c ' *)",
       "Bash(python3 -c \"import requests; print\\('requests ok'\\)\")",
-      "Bash(python3 scraper.py --test)"
+      "Bash(python3 scraper.py --test)",
+      "Bash(python -c ' *)",
+      "Bash(python -m venv .venv)",
+      "Bash(.venv/Scripts/python --version)",
+      "Bash(.venv/Scripts/python -c \"import nys-sanitary-code.scrape.orchestrator\")",
+      "Bash(.venv/Scripts/python nys-sanitary-code/scrape/orchestrator.py --help)",
+      "Bash(.venv/Scripts/python -c ' *)"
     ]
   }
 }
