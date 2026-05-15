@@ -81,7 +81,7 @@ def make_chunks(
                 **metadata,
                 "part_index": i,
                 "char_count": len(chunk_text),
-                "text": chunk_text,  # stored so structure_response can use it
+                "text": chunk_text,
             },
         })
 

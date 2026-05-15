@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NYC Health Law Bot</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>NYC Health Law Bot</h1>
+      <p class="subtitle">Search the NYC Health Code, NYC Admin Code, and NYS Sanitary Code</p>
+    </header>
+
+    <form id="search-form">
+      <div class="search-row">
+        <input id="question" type="text" placeholder="e.g. Can you use plastic cutting boards in a restaurant?" autocomplete="off" />
+        <button type="submit">Ask</button>
+      </div>
+    </form>
+
+    <div id="loading" hidden>
+      <div class="spinner"></div>
+      <p>Searching...</p>
+    </div>
+
+    <div id="error" hidden>
+      <p id="error-msg"></p>
+    </div>
+
+    <div id="results" hidden>
+      <section id="summary-section">
+        <h2>Summary</h2>
+        <div id="summary"></div>
+      </section>
+
+      <section id="citations-section">
+        <h2>Citations</h2>
+        <div id="citations"></div>
+      </section>
+
+      <section id="additional-section" hidden>
+        <h2>Additional Sources</h2>
+        <div id="additional"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

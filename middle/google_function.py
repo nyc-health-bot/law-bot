@@ -50,8 +50,10 @@ def _pinecone_query(query_text: str) -> list[dict]:
         json={"vector": vector, "topK": 10, "includeMetadata": True},
     )
     resp.raise_for_status()
-    matches = resp.json().get("matches", [])
-    return [m for m in matches if m.get("score", 0) > 0.75]
+    body = resp.json()
+    matches = body.get("matches", [])
+    print(f"Pinecone returned {len(matches)} matches, scores: {[round(m.get('score',0),3) for m in matches]}")
+    return [m for m in matches if m.get("score", 0) > 0.5]
 
 
 # --- GEMINI HELPERS ---
@@ -95,6 +97,7 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         if key not in seen:
             seen[key] = {
                 "full_title": f"{key[0]} §{key[1]}".strip(" §"),
+                "code": key[0],
                 "section_title": meta.get("section_title", ""),
                 "url": meta.get("source_url", ""),
                 "texts": [],
@@ -108,6 +111,7 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         combined_text = "\n\n".join(entry["texts"])
         sources.append({
             "full_title": entry["full_title"],
+            "code": entry["code"],
             "section_title": entry["section_title"],
             "url": entry["url"],
             "text": combined_text,
@@ -133,7 +137,9 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
             f"If the sources do not answer the question, say so explicitly.\n"
             f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
             f"Each object must have \"index\" (integer) and \"relevant_passages\" "
-            f"(a list of verbatim quotes from that source's TEXT that are relevant to the question — "
+            f"(a list of verbatim quotes copied ONLY from the TEXT of the source with that exact index — "
+            f"do not quote text from any other source — "
+            f"include any text from this source that you quoted directly in the summary — "
             f"each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant)."
         )}]}],
         "generationConfig": {
@@ -174,6 +180,7 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         {
             "anchor": f"citation-{i}",
             "section": section_numbers[i],
+            "code": sources[i]["code"],
             "full_title": sources[i]["full_title"],
             "section_title": sources[i]["section_title"],
             "url": sources[i]["url"],

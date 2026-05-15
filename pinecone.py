@@ -50,6 +50,8 @@ def upload_chunks(chunks: list[dict], batch_size: int = 100) -> None:
         }
 
         resp = post(url=url, headers=headers, json=payload)
+        if not resp.ok:
+            print(f"Pinecone error {resp.status_code}: {resp.text}")
         resp.raise_for_status()
         total += len(batch)
         print(f"Upserted {total}/{len(chunks)}")

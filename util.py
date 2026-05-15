@@ -1,5 +1,6 @@
 import requests
 import os
+import time
 from dotenv import load_dotenv
 import numpy as np
 
@@ -63,24 +64,34 @@ def embed_fn(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT", batch_size
             ]
         }
 
-        try:
-            resp = post(url=url, headers=headers, json=payload, timeout=30)
-            resp.raise_for_status()
-
-            data = resp.json()
-            # Extract embeddings from the response
-            if "embeddings" in data:
-                for item in data['embeddings']:
-                    vector = item['values']
-                    truncated = truncate_vector(vector)
-                    all_embeddings.append(truncated)
-            else:
-                raise ValueError(f"API response did not contain 'embeddings': {data}")
-
-        except requests.exceptions.RequestException as e:
-            print(f"Request failed: {e}")
-            if e.response is not None:
-                print(f"Response body: {e.response.text}")
-            raise
+        for attempt in range(5):
+            try:
+                resp = post(url=url, headers=headers, json=payload, timeout=30)
+                if resp.status_code == 429:
+                    wait = 2 ** attempt
+                    print(f"Rate limited, retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                if "embeddings" in data:
+                    for item in data['embeddings']:
+                        truncated = truncate_vector(item['values'])
+                        all_embeddings.append(truncated)
+                else:
+                    raise ValueError(f"API response did not contain 'embeddings': {data}")
+                break
+            except requests.exceptions.RequestException as e:
+                if e.response is not None and e.response.status_code == 429:
+                    wait = 2 ** attempt
+                    print(f"Rate limited, retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"Request failed: {e}")
+                    if e.response is not None:
+                        print(f"Response body: {e.response.text}")
+                    raise
+        else:
+            raise RuntimeError("Embedding request failed after 5 retries (rate limit)")
 
     return all_embeddings

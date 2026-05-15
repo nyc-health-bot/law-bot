@@ -57,6 +57,7 @@ def structure_response(user_query, pinecone_matches):
         if key not in seen:
             seen[key] = {
                 "full_title": f"{key[0]} §{key[1]}".strip(" §"),
+                "code": key[0],
                 "section_title": meta.get('section_title', ''),
                 "url": meta.get('source_url', ''),
                 "texts": []
@@ -70,6 +71,7 @@ def structure_response(user_query, pinecone_matches):
         combined_text = "\n\n".join(entry["texts"])
         sources.append({
             "full_title": entry["full_title"],
+            "code": entry["code"],
             "section_title": entry["section_title"],
             "url": entry["url"],
             "text": combined_text
@@ -98,7 +100,9 @@ def structure_response(user_query, pinecone_matches):
                     f"If the sources do not answer the question, say so explicitly.\n"
                     f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
                     f"Each object must have \"index\" (integer) and \"relevant_passages\" "
-                    f"(a list of verbatim quotes from that source's TEXT that are relevant to the question — "
+                    f"(a list of verbatim quotes copied ONLY from the TEXT of the source with that exact index — "
+                    f"do not quote text from any other source — "
+                    f"include any text from this source that you quoted directly in the summary — "
                     f"each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant)."
                 )
             }]
@@ -143,6 +147,7 @@ def structure_response(user_query, pinecone_matches):
         {
             "anchor": f"citation-{i}",
             "section": section_numbers[i],
+            "code": sources[i]["code"],
             "full_title": sources[i]["full_title"],
             "section_title": sources[i]["section_title"],
             "url": sources[i]["url"],
