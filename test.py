@@ -1,21 +1,13 @@
-import os
-from dotenv import load_dotenv
+import middle.main
 
-load_dotenv()
-from pinecone import query_pinecone  # or whatever your pinecone.py exposes
-from util import embed_fn, post
+query = "in a restaurant can you use plastic cutting boards"
 
-query = "live animals prohibited food service establishment"
+query = "Can a restaurant owner appeal a health inspection grade in NYC?"
+print ("structuring query ...")
+structured_question = middle.main.structure_question(query)
+print ("finding matches ...")
+matches = middle.main.get_values(structured_question)
+print ("creating response ... ")
+response = middle.main.structure_response(query, matches)
 
-vector = embed_fn([query], task_type="RETRIEVAL_QUERY")[0]
-
-pc_resp = post(
-    url=f"{os.getenv('PINECONE_HOST')}/query",
-    headers={"Api-Key": os.getenv("PINECONE_API_KEY"), "Content-Type": "application/json"},
-    json={"vector": vector, "topK": 5, "includeMetadata": True}
-)
-
-for m in pc_resp.json().get("matches", []):
-    print(f"{m['score']:.4f} | {m['metadata'].get('code')} §{m['metadata'].get('section')} | {m['metadata'].get('section_title')}")
-    print(f"       {m['metadata'].get('char_count')} chars | {m['metadata'].get('text', '')[:80]}")
-    print()
+hold = 1

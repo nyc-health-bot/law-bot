@@ -1,4 +1,6 @@
+import json
 import os
+import re
 from dotenv import load_dotenv
 from util import post, embed_fn
 from pinecone import query
@@ -41,36 +43,117 @@ def get_values(technical_query):
 
 def structure_response(user_query, pinecone_matches):
     """
-    Constructs the final prompt with context and constraints for the LLM.
+    Returns {"summary": str, "citations": [{anchor, section, full_title, section_title, url, text, relevant_passages, cited_in_summary}, ...]}
+    Matches with the same code+section are merged into one citation.
+    anchor is a unique HTML id (e.g. "citation-0") for same-page linking.
+    section is the bare section number (e.g. "81.07") so the UI can map §-references in the summary to anchors.
+    cited_in_summary is True if the section is referenced inline in the summary (§XX.XX pattern).
     """
-    # Build a readable context block from varying metadata schemas
-    context_bits = []
+    # Group matches by (code, section), preserving first-seen order
+    seen = {}
     for m in pinecone_matches:
         meta = m['metadata']
-        # Unified citation format
-        citation = f"{meta.get('code')} §{meta.get('section')}"
-        url = meta.get('source_url', 'No link provided')
-        text = meta.get('text', '[Content missing]')
+        key = (meta.get('code', ''), meta.get('section', ''))
+        if key not in seen:
+            seen[key] = {
+                "full_title": f"{key[0]} §{key[1]}".strip(" §"),
+                "section_title": meta.get('section_title', ''),
+                "url": meta.get('source_url', ''),
+                "texts": []
+            }
+        seen[key]["texts"].append(meta.get('text', ''))
 
-        context_bits.append(f"SOURCE: {citation}\nURL: {url}\nTEXT: {text}")
+    sources = []
+    section_numbers = []
+    context_bits = []
+    for i, (key, entry) in enumerate(seen.items()):
+        combined_text = "\n\n".join(entry["texts"])
+        sources.append({
+            "full_title": entry["full_title"],
+            "section_title": entry["section_title"],
+            "url": entry["url"],
+            "text": combined_text
+        })
+        section_numbers.append(key[1])
+        context_bits.append(f"[{i}] {entry['full_title']}\nURL: {entry['url']}\nTEXT: {combined_text}")
 
     context_str = "\n\n---\n\n".join(context_bits)
 
-    # Final call to Gemini to answer the question
     gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
     payload = {
         "contents": [{
             "parts": [{
-                "text": (f"System: You are an expert NYC Health Inspector. Answer based ONLY on the provided codes. "
-                         f"Use direct quotes and provide specific links. If not found, say you don't know.\n\n"
-                         f"Context:\n{context_str}\n\n"
-                         f"User Question: {user_query}")
+                "text": (
+                    f"You are an expert NYC Health Inspector. "
+                    f"Use ONLY the source texts provided — do not add any outside knowledge.\n\n"
+                    f"Question: {user_query}\n\n"
+                    f"Sources:\n{context_str}\n\n"
+                    f"Return a JSON object with two keys:\n"
+                    f"1. \"summary\": the answer to the question formatted as a markdown bulleted list (each item starting with \"- \"). "
+                    f"If a single sentence helps introduce the bullets, include it before the list. "
+                    f"Each bullet should be a distinct rule or requirement. "
+                    f"When citing a specific rule or requirement, include its section identifier inline in parentheses at the end of the bullet — "
+                    f"for example: \"- Surfaces must be smooth and free from cracks (§81.07, §19.05).\" "
+                    f"Use the section identifiers from the source titles (e.g. §81.07). "
+                    f"If the sources do not answer the question, say so explicitly.\n"
+                    f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
+                    f"Each object must have \"index\" (integer) and \"relevant_passages\" "
+                    f"(a list of verbatim quotes from that source's TEXT that are relevant to the question — "
+                    f"each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant)."
+                )
             }]
-        }]
+        }],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "citations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "index": {"type": "integer"},
+                                "relevant_passages": {
+                                    "type": "array",
+                                    "items": {"type": "string"}
+                                }
+                            },
+                            "required": ["index", "relevant_passages"]
+                        }
+                    }
+                },
+                "required": ["summary", "citations"]
+            }
+        }
     }
 
     gen_resp = post(url=gen_url, json=payload)
-    return gen_resp.json()['candidates'][0]['content']['parts'][0]['text']
+    raw = gen_resp.json()['candidates'][0]['content']['parts'][0]['text']
+    gemini_out = json.loads(raw)
+
+    passage_map = {item['index']: item.get('relevant_passages', []) for item in gemini_out['citations']}
+
+    summary = gemini_out['summary']
+    cited_sections = set(re.findall(r'§([\d.\-]+)', summary))
+
+    citations = [
+        {
+            "anchor": f"citation-{i}",
+            "section": section_numbers[i],
+            "full_title": sources[i]["full_title"],
+            "section_title": sources[i]["section_title"],
+            "url": sources[i]["url"],
+            "text": sources[i]["text"],
+            "relevant_passages": passage_map.get(i, []),
+            "cited_in_summary": section_numbers[i] in cited_sections,
+        }
+        for i in range(len(sources))
+    ]
+
+    return {"summary": summary, "citations": citations}
 
 
 # --- MAIN HANDLER ---

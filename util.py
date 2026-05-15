@@ -6,21 +6,18 @@ import numpy as np
 load_dotenv()
 PROXIES = {'http': os.getenv('PROXY'), 'https': os.getenv('PROXY')}
 EMBED_MODEL = "models/gemini-embedding-001"
+IN_CODESPACE = bool(os.getenv('CODESPACE_NAME'))
 
 
 def post(**kwargs):
-    kwargs.update({
-        'proxies': PROXIES,
-        'verify': False
-    })
+    if not IN_CODESPACE:
+        kwargs.update({'proxies': PROXIES, 'verify': False})
     return requests.post(**kwargs)
 
 
 def get(**kwargs):
-    kwargs.update({
-        'proxies': PROXIES,
-        'verify': False
-    })
+    if not IN_CODESPACE:
+        kwargs.update({'proxies': PROXIES, 'verify': False})
     return requests.get(**kwargs)
 
 
