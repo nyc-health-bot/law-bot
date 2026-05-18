@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 
 import numpy as np
 import requests
@@ -42,27 +43,44 @@ def _embed(texts: list[str], task_type: str = "RETRIEVAL_QUERY") -> list[list[fl
 
 # --- PINECONE ---
 
-def _pinecone_query(query_text: str) -> list[dict]:
+def _pinecone_query(query_text: str, max_sections: int = 10) -> list[dict]:
     vector = _embed([query_text])[0]
     resp = requests.post(
         f"{PINECONE_HOST}/query",
         headers={"Api-Key": PINECONE_KEY, "Content-Type": "application/json"},
-        json={"vector": vector, "topK": 10, "includeMetadata": True},
+        json={"vector": vector, "topK": 30, "includeMetadata": True},
     )
     resp.raise_for_status()
-    body = resp.json()
-    matches = body.get("matches", [])
-    print(f"Pinecone returned {len(matches)} matches, scores: {[round(m.get('score',0),3) for m in matches]}")
-    return [m for m in matches if m.get("score", 0) > 0.5]
+    matches = [m for m in resp.json().get("matches", []) if m.get("score", 0) > 0.5]
+    print(f"Pinecone returned {len(matches)} matches above threshold")
+
+    # Rank unique sections by their best chunk score, cap at max_sections
+    section_best = {}
+    for m in matches:
+        meta = m["metadata"]
+        key = (meta.get("code", ""), meta.get("section", ""))
+        score = m.get("score", 0)
+        if key not in section_best or score > section_best[key]:
+            section_best[key] = score
+
+    top_sections = set(
+        sorted(section_best, key=lambda k: section_best[k], reverse=True)[:max_sections]
+    )
+    return [m for m in matches if (m["metadata"].get("code", ""), m["metadata"].get("section", "")) in top_sections]
 
 
 # --- GEMINI HELPERS ---
 
 def _gemini_generate(payload: dict) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
-    resp = requests.post(url, json=payload, timeout=60)
-    resp.raise_for_status()
-    return resp.json()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
+    for attempt in range(5):
+        resp = requests.post(url, json=payload, timeout=60)
+        if resp.status_code in (429, 503):
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    raise RuntimeError("Gemini request failed after 5 retries")
 
 
 # --- PIPELINE ---
@@ -130,10 +148,9 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
             f"Return a JSON object with two keys:\n"
             f"1. \"summary\": the answer to the question formatted as a markdown bulleted list (each item starting with \"- \"). "
             f"If a single sentence helps introduce the bullets, include it before the list. "
-            f"Each bullet should be a distinct rule or requirement. "
-            f"When citing a specific rule or requirement, include its section identifier inline in parentheses at the end of the bullet — "
+            f"Each bullet must end with the section identifier(s) it draws from, in parentheses — "
             f"for example: \"- Surfaces must be smooth and free from cracks (§81.07, §19.05).\" "
-            f"Use the section identifiers from the source titles (e.g. §81.07). "
+            f"Every bullet must have at least one §-citation. Use only section identifiers that appear in the source titles above. "
             f"If the sources do not answer the question, say so explicitly.\n"
             f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
             f"Each object must have \"index\" (integer) and \"relevant_passages\" "

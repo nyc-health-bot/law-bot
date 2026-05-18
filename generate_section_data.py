@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "ui" / "data"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+_SUBSEC = re.compile(r'^\s*\([a-zA-Z0-9]+\)')
+_SENTENCE_END = re.compile(r'[.!?:;]\s*$')
+
 
 def clean_page_numbers(text: str) -> str:
     lines = text.split("\n")
@@ -20,10 +23,58 @@ def clean_page_numbers(text: str) -> str:
     for line in lines:
         if not line.strip():
             last = next((l for l in reversed(result) if l.strip()), "")
-            if last and not re.search(r"[.!?:;]\s*$", last.rstrip()):
+            if last and not _SENTENCE_END.search(last.rstrip()):
                 continue  # blank line is a page-break artifact, not a paragraph break
         result.append(line)
     return "\n".join(result)
+
+
+def reflow_nyc_health(text: str) -> str:
+    """Join PDF soft-wrap line breaks while preserving subsection-start newlines."""
+    lines = text.split("\n")
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+        elif _SUBSEC.match(stripped):
+            # Subsection marker — always its own line (keep original indentation)
+            out.append(line)
+        elif out and out[-1].strip() and not _SENTENCE_END.search(out[-1].rstrip()):
+            # Previous line didn't end a sentence → soft wrap, join
+            out[-1] = out[-1].rstrip() + " " + stripped
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def format_nys_body(body: str, section: str, title: str) -> str:
+    """Strip repeated section header and insert newlines at subsection markers."""
+    # NYS bodies often open with "§num Title." — strip it to avoid duplication
+    for prefix in (f"{section} {title}.", f"{section} {title}", section):
+        if body.startswith(prefix):
+            body = body[len(prefix):].lstrip(" .")
+            break
+
+    def _break(m):
+        punct, content = m.group(1), m.group(2)
+        if re.fullmatch(r"\d+", content):
+            indent = "    "   # numbered items — 4 spaces
+        elif len(content) >= 2 and re.fullmatch(r"[ivxlcdm]+", content):
+            indent = "        "  # roman numerals — 8 spaces
+        else:
+            indent = ""          # single letter — top level
+        return f"{punct}\n{indent}({content}) "
+
+    # Break before (a)/(b)/... (1)/(2)/... (ii)/(iii)/... after sentence punctuation.
+    # Optional "or"/"and" before the marker (e.g. "; or (5) persons...").
+    # Guard: content must be a plain letter, integer, or roman numeral (no decimals/symbols).
+    body = re.sub(
+        r'([.:;])\s+(?:(?:or|and)\s+)?\(([a-z0-9]+)\)\s+',
+        _break,
+        body,
+    )
+    return body.strip()
 
 
 def full_text(title: str, body: str) -> str:
@@ -38,7 +89,7 @@ for f in sorted((ROOT / "scraping/nyc-health-code/data").glob("*.json")):
         sec_num = section.get("section", "").strip()
         if not sec_num:
             continue
-        body = clean_page_numbers(section.get("text", "").strip())
+        body = reflow_nyc_health(clean_page_numbers(section.get("text", "").strip()))
         nyc_health[sec_num] = full_text(section.get("title", "").strip(), body)
 
 (OUT_DIR / "nyc-health-code.json").write_text(
@@ -79,8 +130,9 @@ for f in sorted((ROOT / "scraping/nys-sanitary-code/data").glob("*.json")):
         sec_num = section.get("section", "").strip()
         if not sec_num:
             continue
-        body = section.get("body", "").strip()
-        nys_sanitary[sec_num] = full_text(section.get("title", "").strip(), body)
+        title = section.get("title", "").strip()
+        body = format_nys_body(section.get("body", "").strip(), sec_num, title)
+        nys_sanitary[sec_num] = full_text(title, body)
 
 (OUT_DIR / "nys-sanitary-code.json").write_text(
     json.dumps(nys_sanitary, ensure_ascii=False, indent=None), encoding="utf-8"

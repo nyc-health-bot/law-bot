@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from dotenv import load_dotenv
 from util import post, embed_fn
 from pinecone import query
@@ -13,11 +14,22 @@ PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_HOST = os.environ.get("PINECONE_HOST")  # URL from Pinecone dashboard
 
 
+def _gemini_post(url, payload):
+    for attempt in range(5):
+        resp = post(url=url, json=payload)
+        if resp.status_code in (429, 503):
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        return resp
+    raise RuntimeError("Gemini request failed after 5 retries")
+
+
 def structure_question(raw_user_query):
     """
     Transforms plain English into a technical 'Legal Query' for better vector search.
     """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
     payload = {
         "contents": [{
             "parts": [{
@@ -32,7 +44,7 @@ def structure_question(raw_user_query):
         "generationConfig": {"temperature": 0.1}  # Keep it deterministic
     }
 
-    resp = post(url=url, json=payload)
+    resp = _gemini_post(url=url, payload=payload)
     # Extract the transformed text from the Gemini response
     return resp.json()['candidates'][0]['content']['parts'][0]['text']
 
@@ -81,7 +93,7 @@ def structure_response(user_query, pinecone_matches):
 
     context_str = "\n\n---\n\n".join(context_bits)
 
-    gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
+    gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
     payload = {
         "contents": [{
             "parts": [{
@@ -93,10 +105,9 @@ def structure_response(user_query, pinecone_matches):
                     f"Return a JSON object with two keys:\n"
                     f"1. \"summary\": the answer to the question formatted as a markdown bulleted list (each item starting with \"- \"). "
                     f"If a single sentence helps introduce the bullets, include it before the list. "
-                    f"Each bullet should be a distinct rule or requirement. "
-                    f"When citing a specific rule or requirement, include its section identifier inline in parentheses at the end of the bullet — "
+                    f"Each bullet must end with the section identifier(s) it draws from, in parentheses — "
                     f"for example: \"- Surfaces must be smooth and free from cracks (§81.07, §19.05).\" "
-                    f"Use the section identifiers from the source titles (e.g. §81.07). "
+                    f"Every bullet must have at least one §-citation. Use only section identifiers that appear in the source titles above. "
                     f"If the sources do not answer the question, say so explicitly.\n"
                     f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
                     f"Each object must have \"index\" (integer) and \"relevant_passages\" "
@@ -134,7 +145,7 @@ def structure_response(user_query, pinecone_matches):
         }
     }
 
-    gen_resp = post(url=gen_url, json=payload)
+    gen_resp = _gemini_post(url=gen_url, payload=payload)
     raw = gen_resp.json()['candidates'][0]['content']['parts'][0]['text']
     gemini_out = json.loads(raw)
 

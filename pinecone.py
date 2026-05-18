@@ -59,26 +59,31 @@ def upload_chunks(chunks: list[dict], batch_size: int = 100) -> None:
     print("Done.")
 
 
-def query(query_text:str) -> list[str]:
+def query(query_text: str, max_sections: int = 10) -> list[dict]:
     """
-    1. Embeds the query using Gemini.
-    2. Queries Pinecone for relevant chunks.
+    Embeds the query, fetches topK=30 chunks, then returns all chunks belonging
+    to the top max_sections unique (code, section) pairs by best chunk score.
     """
-    # 1. Get Embedding
-    query_vector = embed_fn([query_text])[0]
+    query_vector = embed_fn([query_text], task_type='RETRIEVAL_QUERY')[0]
 
-    # 2. Search Pinecone
-    query_url = f"{PINECONE_HOST}/query"
-    pc_resp = post(url=query_url,
-                            headers={"Api-Key": PINECONE_KEY, "Content-Type": "application/json"},
-                            json={
-                                "vector": query_vector,
-                                "topK": 10,
-                                "includeMetadata": True
-                            }
-                            )
-    responses = pc_resp.json().get('matches', [])
-    valid_responses = [r for r in responses if r.get('score') > .75]
-    if not valid_responses:
-        return ["I couldn't find any relevant sections in the NYC Health Code or NYS Sanitary Code for that question."]
-    return valid_responses
+    pc_resp = post(
+        url=f"{PINECONE_HOST}/query",
+        headers={"Api-Key": PINECONE_KEY, "Content-Type": "application/json"},
+        json={"vector": query_vector, "topK": 30, "includeMetadata": True},
+    )
+    matches = [m for m in pc_resp.json().get('matches', []) if m.get('score', 0) > 0.5]
+
+    # Rank unique sections by their best chunk score
+    section_best = {}
+    for m in matches:
+        meta = m['metadata']
+        key = (meta.get('code', ''), meta.get('section', ''))
+        score = m.get('score', 0)
+        if key not in section_best or score > section_best[key]:
+            section_best[key] = score
+
+    top_sections = set(
+        sorted(section_best, key=lambda k: section_best[k], reverse=True)[:max_sections]
+    )
+
+    return [m for m in matches if (m['metadata'].get('code', ''), m['metadata'].get('section', '')) in top_sections]
