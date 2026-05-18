@@ -152,3 +152,12 @@ mark {
   padding: 1px 0;
   border-radius: 2px;
 }
+
+footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #ddd;
+  font-size: 0.78rem;
+  color: #888;
+  line-height: 1.6;
+}

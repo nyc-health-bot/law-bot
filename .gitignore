@@ -18,3 +18,4 @@ build/
 Thumbs.db
 
 .env
+middle/google_deploy/env.yaml
