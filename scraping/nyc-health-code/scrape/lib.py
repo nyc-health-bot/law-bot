@@ -129,6 +129,9 @@ def parse_sections(text: str) -> list:
     """
     import re
 
+    # Some PDFs (e.g. chapter 10) split "§10\n-01" across a line break — rejoin before parsing
+    text = re.sub(r'(§\s*\d+)\n(-\d+)', r'\1\2', text)
+
     # Section number variants:
     #   \d+(?:-[A-Za-z])?  — base with optional letter subpart (e.g. 48-A)
     #   [-.]               — separator (dot or dash)

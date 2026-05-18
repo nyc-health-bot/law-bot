@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash",
       "Bash(curl -s -L --max-time 30 -A \"Mozilla/5.0\" \"https://govt.westlaw.com/nycrr/Browse/Home/NewYork/UnofficialNewYorkCodesRulesandRegulations?guid=Id8627730b65511ddb903a4af59fec65a&originationContext=documenttoc&transitionType=Default&contextData=\\(sc.Default\\)\")",
       "Bash(python3 -c ' *)",
       "Bash(python3 -c \"import requests; print\\('requests ok'\\)\")",

@@ -13,6 +13,20 @@ GEMINI_KEY = os.environ.get("GOOGLE_API_KEY")
 PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_HOST = os.environ.get("PINECONE_HOST")  # URL from Pinecone dashboard
 
+_PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
+
+def _get_prompt(name: str) -> str:
+    with open(os.path.join(_PROMPTS_DIR, name), encoding="utf-8") as f:
+        return f.read()
+
+
+def _filter_citations(summary: str, valid_sections: set) -> str:
+    """Strip §-citations from summary that have no corresponding retrieved source."""
+    def clean(m):
+        kept = [s for s in re.findall(r'§([\d.\-]+)', m.group(0)) if s in valid_sections]
+        return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
+    return re.sub(r'\((?:§[\d.\-]+(?:,\s*)?)+\)', clean, summary).strip()
+
 
 def _gemini_post(url, payload):
     for attempt in range(5):
@@ -30,22 +44,12 @@ def structure_question(raw_user_query):
     Transforms plain English into a technical 'Legal Query' for better vector search.
     """
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
+    prompt = _get_prompt("structure_question.txt").format(raw_user_query=raw_user_query)
     payload = {
-        "contents": [{
-            "parts": [{
-                "text": (
-                    f"Rewrite the following question as a short list of technical and legal keywords "
-                    f"that would appear in the NYC Health Code or NYS Sanitary Code. "
-                    f"Output ONLY the keywords, no explanation, no sentences, no formatting.\n\n"
-                    f"Question: '{raw_user_query}'"
-                )
-            }]
-        }],
-        "generationConfig": {"temperature": 0.1}  # Keep it deterministic
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1},
     }
-
     resp = _gemini_post(url=url, payload=payload)
-    # Extract the transformed text from the Gemini response
     return resp.json()['candidates'][0]['content']['parts'][0]['text']
 
 
@@ -94,30 +98,13 @@ def structure_response(user_query, pinecone_matches):
     context_str = "\n\n---\n\n".join(context_bits)
 
     gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
+    prompt = _get_prompt("structure_response.txt").format(
+        user_query=user_query,
+        context_str=context_str,
+        num_sources=len(sources),
+    )
     payload = {
-        "contents": [{
-            "parts": [{
-                "text": (
-                    f"You are an expert NYC Health Inspector. "
-                    f"Use ONLY the source texts provided — do not add any outside knowledge.\n\n"
-                    f"Question: {user_query}\n\n"
-                    f"Sources:\n{context_str}\n\n"
-                    f"Return a JSON object with two keys:\n"
-                    f"1. \"summary\": the answer to the question formatted as a markdown bulleted list (each item starting with \"- \"). "
-                    f"If a single sentence helps introduce the bullets, include it before the list. "
-                    f"Each bullet must end with the section identifier(s) it draws from, in parentheses — "
-                    f"for example: \"- Surfaces must be smooth and free from cracks (§81.07, §19.05).\" "
-                    f"Every bullet must have at least one §-citation. Use only section identifiers that appear in the source titles above. "
-                    f"If the sources do not answer the question, say so explicitly.\n"
-                    f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
-                    f"Each object must have \"index\" (integer) and \"relevant_passages\" "
-                    f"(a list of verbatim quotes copied ONLY from the TEXT of the source with that exact index — "
-                    f"do not quote text from any other source — "
-                    f"include any text from this source that you quoted directly in the summary — "
-                    f"each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant)."
-                )
-            }]
-        }],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",
@@ -151,7 +138,7 @@ def structure_response(user_query, pinecone_matches):
 
     passage_map = {item['index']: item.get('relevant_passages', []) for item in gemini_out['citations']}
 
-    summary = gemini_out['summary']
+    summary = _filter_citations(gemini_out['summary'], set(section_numbers))
     cited_sections = set(re.findall(r'§([\d.\-]+)', summary))
 
     citations = [

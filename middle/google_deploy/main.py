@@ -11,6 +11,36 @@ GEMINI_KEY = os.environ.get("GOOGLE_API_KEY")
 PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_HOST = os.environ.get("PINECONE_HOST")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
+PROMPT_BUCKET = os.environ.get("PROMPT_BUCKET")
+
+# --- PROMPT CACHE (TTL 60s — update prompts via gsutil cp, no redeploy needed) ---
+_prompt_cache: dict[str, tuple[str, float]] = {}
+_PROMPT_TTL = 60
+
+
+def _fetch_prompt(name: str) -> str:
+    token_resp = requests.get(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+        headers={"Metadata-Flavor": "Google"},
+        timeout=5,
+    )
+    token = token_resp.json()["access_token"]
+    resp = requests.get(
+        f"https://storage.googleapis.com/storage/v1/b/{PROMPT_BUCKET}/o/{name}?alt=media",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+def _get_prompt(name: str) -> str:
+    now = time.time()
+    if name in _prompt_cache and now - _prompt_cache[name][1] < _PROMPT_TTL:
+        return _prompt_cache[name][0]
+    text = _fetch_prompt(name)
+    _prompt_cache[name] = (text, now)
+    return text
 
 EMBED_MODEL = "models/gemini-embedding-001"
 EMBED_DIM = 1024
@@ -86,13 +116,9 @@ def _gemini_generate(payload: dict) -> dict:
 # --- PIPELINE ---
 
 def structure_question(raw_user_query: str) -> str:
+    prompt = _get_prompt("structure_question.txt").format(raw_user_query=raw_user_query)
     payload = {
-        "contents": [{"parts": [{"text": (
-            f"Rewrite the following question as a short list of technical and legal keywords "
-            f"that would appear in the NYC Health Code or NYS Sanitary Code. "
-            f"Output ONLY the keywords, no explanation, no sentences, no formatting.\n\n"
-            f"Question: '{raw_user_query}'"
-        )}]}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.1},
     }
     out = _gemini_generate(payload)
@@ -139,26 +165,13 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
 
     context_str = "\n\n---\n\n".join(context_bits)
 
+    prompt = _get_prompt("structure_response.txt").format(
+        user_query=user_query,
+        context_str=context_str,
+        num_sources=len(sources),
+    )
     payload = {
-        "contents": [{"parts": [{"text": (
-            f"You are an expert NYC Health Inspector. "
-            f"Use ONLY the source texts provided — do not add any outside knowledge.\n\n"
-            f"Question: {user_query}\n\n"
-            f"Sources:\n{context_str}\n\n"
-            f"Return a JSON object with two keys:\n"
-            f"1. \"summary\": the answer to the question formatted as a markdown bulleted list (each item starting with \"- \"). "
-            f"If a single sentence helps introduce the bullets, include it before the list. "
-            f"Each bullet must end with the section identifier(s) it draws from, in parentheses — "
-            f"for example: \"- Surfaces must be smooth and free from cracks (§81.07, §19.05).\" "
-            f"Every bullet must have at least one §-citation. Use only section identifiers that appear in the source titles above. "
-            f"If the sources do not answer the question, say so explicitly.\n"
-            f"2. \"citations\": an array with exactly {len(sources)} objects, one per source in order. "
-            f"Each object must have \"index\" (integer) and \"relevant_passages\" "
-            f"(a list of verbatim quotes copied ONLY from the TEXT of the source with that exact index — "
-            f"do not quote text from any other source — "
-            f"include any text from this source that you quoted directly in the summary — "
-            f"each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant)."
-        )}]}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",

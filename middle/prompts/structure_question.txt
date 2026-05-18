@@ -1,0 +1,3 @@
+Rewrite the following question as a short list of technical and legal keywords that would appear in the NYC Health Code or NYS Sanitary Code. Output ONLY the keywords, no explanation, no sentences, no formatting.
+
+Question: '{raw_user_query}'
