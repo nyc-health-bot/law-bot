@@ -1,9 +1,10 @@
 const API_URL = 'https://us-east1-nyc-health-law-bot.cloudfunctions.net/law-bot';
 
 const CODE_FILES = {
-  'NYC Health Code':  'data/nyc-health-code.json',
-  'NYC Admin Code':   'data/nyc-admin-code.json',
-  'NYS Sanitary Code': 'data/nys-sanitary-code.json',
+  'NYC Health Code':            'data/nyc-health-code.json',
+  'Rules of the City of New York': 'data/nyc-rules.json',
+  'NYC Admin Code':             'data/nyc-admin-code.json',
+  'NYS Sanitary Code':          'data/nys-sanitary-code.json',
 };
 const sectionCache = {};  // filename -> { section: fullText }
 

@@ -23,12 +23,17 @@ def get_chunks(health_code_path, max_chars=2000):
         if file_path.suffix != '.json':
             continue
         data = json.loads(file_path.read_text(encoding='utf-8', errors='replace'))
+        code_label = (
+            "Rules of the City of New York"
+            if data.get("type") == "chapter"
+            else "NYC Health Code"
+        )
         for section in data.get("sections", []):
             chunks.extend(make_chunks(
                 title=section.get("title", "").strip(),
                 body=_clean_body(section.get("text", "").strip()),
                 metadata={
-                    "code": "NYC Health Code",
+                    "code": code_label,
                     "article_number": data.get("number", ""),
                     "article_title": data.get("title", ""),
                     "section": section.get("section", ""),
