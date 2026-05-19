@@ -31,7 +31,7 @@ def _fetch_prompt(name: str) -> str:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.text
+    return resp.content.decode('utf-8')
 
 
 def _get_prompt(name: str) -> str:
@@ -111,6 +111,14 @@ def _gemini_generate(payload: dict) -> dict:
         resp.raise_for_status()
         return resp.json()
     raise RuntimeError("Gemini request failed after 5 retries")
+
+
+def _filter_citations(summary: str, valid_sections: set) -> str:
+    """Strip §-citations from summary that have no corresponding retrieved source."""
+    def clean(m):
+        kept = [s for s in re.findall(r'§([\d.\-]+)', m.group(0)) if s in valid_sections]
+        return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
+    return re.sub(r'\((?:§[\d.\-]+(?:,\s*)?)+\)', clean, summary).strip()
 
 
 # --- PIPELINE ---
@@ -203,7 +211,7 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
     gemini_out = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
 
     passage_map = {item["index"]: item.get("relevant_passages", []) for item in gemini_out["citations"]}
-    summary = gemini_out["summary"]
+    summary = _filter_citations(gemini_out["summary"], set(section_numbers))
     cited_sections = set(re.findall(r'§([\d.\-]+)', summary))
 
     citations = [

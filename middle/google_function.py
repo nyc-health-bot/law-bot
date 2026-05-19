@@ -31,7 +31,7 @@ def _fetch_prompt(name: str) -> str:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.text
+    return resp.content.decode('utf-8')
 
 
 def _get_prompt(name: str) -> str:
