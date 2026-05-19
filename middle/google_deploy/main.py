@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import os
 import re
@@ -5,6 +6,7 @@ import time
 
 import numpy as np
 import requests
+from flask import Response
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get("GOOGLE_API_KEY")
@@ -73,7 +75,7 @@ def _embed(texts: list[str], task_type: str = "RETRIEVAL_QUERY") -> list[list[fl
 
 # --- PINECONE ---
 
-def _pinecone_query(query_text: str, max_sections: int = 10) -> list[dict]:
+def _pinecone_query(query_text: str, max_sections: int = 6) -> list[dict]:
     vector = _embed([query_text])[0]
     resp = requests.post(
         f"{PINECONE_HOST}/query",
@@ -119,6 +121,85 @@ def _filter_citations(summary: str, valid_sections: set) -> str:
         kept = [s for s in re.findall(r'§([\d.\-]+)', m.group(0)) if s in valid_sections]
         return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
     return re.sub(r'\((?:§[\d.\-]+(?:,\s*)?)+\)', clean, summary).strip()
+
+
+def _build_sources(matches: list[dict]) -> list[dict]:
+    seen = {}
+    for m in matches:
+        meta = m["metadata"]
+        key = (meta.get("code", ""), meta.get("section", ""))
+        if key not in seen:
+            seen[key] = {
+                "full_title": f"{key[0]} §{key[1]}".strip(" §"),
+                "code": key[0],
+                "section": key[1],
+                "section_title": meta.get("section_title", ""),
+                "url": meta.get("source_url", ""),
+                "texts": [],
+            }
+        seen[key]["texts"].append(meta.get("text", ""))
+    return [
+        {**{k: v for k, v in entry.items() if k != "texts"},
+         "text": "\n\n".join(entry["texts"])}
+        for entry in seen.values()
+    ]
+
+
+def _gemini_stream(payload: dict):
+    """Yields text chunks from Gemini streaming API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+    for attempt in range(3):
+        resp = requests.post(url, json=payload, timeout=60, stream=True)
+        if resp.status_code in (429, 503):
+            resp.close()
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line and line.startswith(b"data: "):
+                try:
+                    data = json.loads(line[6:])
+                    text = data["candidates"][0]["content"]["parts"][0].get("text", "")
+                    if text:
+                        yield text
+                except (KeyError, IndexError, json.JSONDecodeError):
+                    continue
+        return
+    raise RuntimeError("Gemini streaming request failed after 3 retries")
+
+
+def _get_passages(user_query: str, sources: list[dict]) -> dict:
+    """Returns {index: [passages]} for each source."""
+    context_str = "\n\n---\n\n".join(
+        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['text']}"
+        for i, s in enumerate(sources)
+    )
+    prompt = _get_prompt("structure_passages.txt").format(
+        user_query=user_query,
+        context_str=context_str,
+        num_sources=len(sources),
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer"},
+                        "relevant_passages": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["index", "relevant_passages"],
+                },
+            },
+        },
+    }
+    out = _gemini_generate(payload)
+    items = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
+    return {item["index"]: item.get("relevant_passages", []) for item in items}
 
 
 # --- PIPELINE ---
@@ -244,29 +325,83 @@ def handle_request(request):
             "Access-Control-Allow-Headers": "Content-Type",
         })
 
+    sse_headers = {
+        **cors_headers,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+
+    def _sse(obj):
+        return f"data: {json.dumps(obj)}\n\n"
+
+    # Run Pinecone lookup before opening the stream so errors return cleanly
     try:
         user_input = request.get_json().get("prompt")
-
-        technical_query = structure_question(user_input)
-        matches = _pinecone_query(technical_query)
-
-        if not matches:
-            return (
-                json.dumps({"answer": {"summary": "I couldn't find any relevant sections for that question.", "citations": []}}),
-                200,
-                {**cors_headers, "Content-Type": "application/json"},
-            )
-
-        answer = structure_response(user_input, matches)
-        return (
-            json.dumps({"answer": answer}),
-            200,
-            {**cors_headers, "Content-Type": "application/json"},
-        )
-
+        matches = _pinecone_query(user_input)
+    except requests.exceptions.Timeout:
+        def _timeout():
+            yield _sse({"type": "error", "message": "The request timed out — the AI service is taking too long to respond. Please try again in a moment."})
+        return Response(_timeout(), headers=sse_headers)
     except Exception as e:
-        return (
-            json.dumps({"error": str(e)}),
-            500,
-            {**cors_headers, "Content-Type": "application/json"},
-        )
+        def _err():
+            yield _sse({"type": "error", "message": str(e)})
+        return Response(_err(), headers=sse_headers)
+
+    if not matches:
+        def _no_results():
+            yield _sse({"type": "metadata", "citations": []})
+            yield _sse({"type": "done", "summary": "- I couldn't find any relevant sections for that question.", "cited_sections": []})
+            yield _sse({"type": "passages", "passages": {}})
+        return Response(_no_results(), headers=sse_headers)
+
+    sources = _build_sources(matches)
+    valid_sections = {s["section"] for s in sources}
+    context_str = "\n\n---\n\n".join(
+        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['text']}"
+        for i, s in enumerate(sources)
+    )
+    citation_meta = [
+        {
+            "anchor": f"citation-{i}",
+            "section": s["section"],
+            "code": s["code"],
+            "full_title": s["full_title"],
+            "section_title": s["section_title"],
+            "url": s["url"],
+            "text": s["text"],
+        }
+        for i, s in enumerate(sources)
+    ]
+    summary_payload = {
+        "contents": [{"parts": [{"text": _get_prompt("structure_summary.txt").format(
+            user_query=user_input, context_str=context_str)}]}],
+        "generationConfig": {"temperature": 0.1},
+    }
+
+    def generate():
+        yield _sse({"type": "metadata", "citations": citation_meta})
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            passages_future = executor.submit(_get_passages, user_input, sources)
+
+            raw_summary = ""
+            try:
+                for chunk in _gemini_stream(summary_payload):
+                    raw_summary += chunk
+                    yield _sse({"type": "chunk", "text": chunk})
+            except Exception as e:
+                yield _sse({"type": "error", "message": str(e)})
+                return
+
+            filtered = _filter_citations(raw_summary, valid_sections)
+            cited_sections = list(re.findall(r'§([\d.\-]+)', filtered))
+            yield _sse({"type": "done", "summary": filtered, "cited_sections": cited_sections})
+
+            try:
+                passages = passages_future.result(timeout=30)
+            except Exception:
+                passages = {}
+            yield _sse({"type": "passages", "passages": passages})
+
+    return Response(generate(), headers=sse_headers)

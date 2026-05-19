@@ -12,4 +12,5 @@ gcloud functions deploy law-bot \
   --entry-point handle_request \
   --region us-east1 \
   --source . \
-  --env-vars-file env.yaml
+  --env-vars-file env.yaml \
+  --min-instances 1

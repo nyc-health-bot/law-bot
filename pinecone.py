@@ -59,7 +59,7 @@ def upload_chunks(chunks: list[dict], batch_size: int = 100) -> None:
     print("Done.")
 
 
-def query(query_text: str, max_sections: int = 10) -> list[dict]:
+def query(query_text: str, max_sections: int = 6) -> list[dict]:
     """
     Embeds the query, fetches topK=30 chunks, then returns all chunks belonging
     to the top max_sections unique (code, section) pairs by best chunk score.
