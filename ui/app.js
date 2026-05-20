@@ -1,5 +1,92 @@
 const API_URL = 'https://us-east1-nyc-health-law-bot.cloudfunctions.net/law-bot';
 
+// --- AUTH ---
+
+let _authToken = null;
+
+const authGateEl     = document.getElementById('auth-gate');
+const searchSection  = document.getElementById('search-section');
+const authFormEl     = document.getElementById('auth-form');
+const authEmailEl    = document.getElementById('auth-email');
+const authSubmitEl   = document.getElementById('auth-submit');
+const authMsgEl      = document.getElementById('auth-msg');
+
+function showAuthGate(message, isError) {
+  authGateEl.hidden = false;
+  searchSection.hidden = true;
+  if (message) {
+    authMsgEl.textContent = message;
+    authMsgEl.className = isError === false ? 'success' : 'error';
+    authMsgEl.hidden = false;
+  }
+}
+
+function showSearch(token) {
+  _authToken = token;
+  authGateEl.hidden = true;
+  searchSection.hidden = false;
+}
+
+(async function initAuth() {
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) { showAuthGate(); return; }
+
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'verify-token', token }),
+    });
+    const data = await resp.json();
+    if (data.valid) {
+      showSearch(token);
+    } else if (data.reason === 'expired') {
+      showAuthGate('Your access link has expired. Enter your email to request a new one.');
+    } else {
+      showAuthGate('Invalid access link. Enter your email to request a new one.');
+    }
+  } catch {
+    showAuthGate('Could not verify your access link. Enter your email to request a new one.');
+  }
+})();
+
+authFormEl.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = authEmailEl.value.trim().toLowerCase();
+
+  authSubmitEl.disabled = true;
+  authSubmitEl.textContent = 'Sending…';
+  authMsgEl.hidden = true;
+
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'send-link', email }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      authMsgEl.textContent = `A link has been sent to ${email}. Check your inbox to access the tool.`;
+      authMsgEl.className = 'success';
+      authMsgEl.hidden = false;
+      authEmailEl.value = '';
+    } else {
+      authMsgEl.textContent = data.error || 'Failed to send email. Please try again.';
+      authMsgEl.className = 'error';
+      authMsgEl.hidden = false;
+    }
+  } catch {
+    authMsgEl.textContent = 'Failed to send email. Please try again.';
+    authMsgEl.className = 'error';
+    authMsgEl.hidden = false;
+  } finally {
+    authSubmitEl.disabled = false;
+    authSubmitEl.textContent = 'Send Link';
+  }
+});
+
+// --- SEARCH ---
+
 const CODE_FILES = {
   'NYC Health Code':            'data/nyc-health-code.json',
   'Rules of the City of New York': 'data/nyc-rules.json',
@@ -35,7 +122,7 @@ form.addEventListener('submit', async (e) => {
     const resp = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: question }),
+      body: JSON.stringify({ prompt: question, token: _authToken }),
     });
 
     const reader = resp.body.getReader();
@@ -67,6 +154,13 @@ form.addEventListener('submit', async (e) => {
           finalizeSummary(event.summary, event.cited_sections, citations);
         } else if (event.type === 'passages') {
           applyPassages(citations, event.passages);
+        } else if (event.type === 'auth_error') {
+          setLoading(false);
+          const msg = event.reason === 'expired'
+            ? 'Your access link has expired. Enter your email to request a new one.'
+            : 'Invalid access link. Enter your email to request a new one.';
+          showAuthGate(msg);
+          return;
         } else if (event.type === 'error') {
           throw new Error(event.message);
         }

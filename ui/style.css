@@ -153,6 +153,28 @@ mark {
   border-radius: 2px;
 }
 
+/* Auth gate */
+#auth-gate { margin-top: 2rem; }
+.auth-intro { color: #555; margin-bottom: 1rem; }
+#auth-email {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+#auth-email:focus { outline: 2px solid #2a6ebb; border-color: transparent; }
+#auth-msg {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+#auth-msg.success { background: #edfaf1; border-left: 4px solid #27ae60; color: #1e6b3a; }
+#auth-msg.error   { background: #fdecea; border-left: 4px solid #c0392b; color: #c0392b; }
+
 footer {
   margin-top: 4rem;
   padding-top: 1.5rem;

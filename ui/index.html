@@ -14,38 +14,51 @@
       <p class="subtitle">Search the NYC Health Code, NYC Admin Code, and NYS Sanitary Code</p>
     </header>
 
-    <form id="search-form">
-      <div class="search-row">
-        <input id="question" type="text" placeholder="e.g. Can you use plastic cutting boards in a restaurant?" autocomplete="off" />
-        <button type="submit">Ask</button>
+    <!-- Auth gate: shown when no valid token -->
+    <section id="auth-gate" hidden>
+      <p class="auth-intro">This tool is for NYC Dept of Health employees. Enter your work email to receive a secure access link.</p>
+      <form id="auth-form" class="search-row">
+        <input id="auth-email" type="email" placeholder="your.name@health.nyc.gov" autocomplete="email" />
+        <button id="auth-submit" type="submit">Send Link</button>
+      </form>
+      <p id="auth-msg" hidden></p>
+    </section>
+
+    <!-- Search: shown when valid token present -->
+    <div id="search-section" hidden>
+      <form id="search-form">
+        <div class="search-row">
+          <input id="question" type="text" placeholder="e.g. Can you use plastic cutting boards in a restaurant?" autocomplete="off" />
+          <button type="submit">Ask</button>
+        </div>
+      </form>
+
+      <div id="loading" hidden>
+        <div class="spinner"></div>
+        <p>Searching...</p>
+        <p id="slow-msg" hidden style="font-size:0.85em;opacity:0.7;">This is taking longer than usual — still working…</p>
       </div>
-    </form>
 
-    <div id="loading" hidden>
-      <div class="spinner"></div>
-      <p>Searching...</p>
-      <p id="slow-msg" hidden style="font-size:0.85em;opacity:0.7;">This is taking longer than usual — still working…</p>
-    </div>
+      <div id="error" hidden>
+        <p id="error-msg"></p>
+      </div>
 
-    <div id="error" hidden>
-      <p id="error-msg"></p>
-    </div>
+      <div id="results" hidden>
+        <section id="summary-section">
+          <h2>Summary</h2>
+          <div id="summary"></div>
+        </section>
 
-    <div id="results" hidden>
-      <section id="summary-section">
-        <h2>Summary</h2>
-        <div id="summary"></div>
-      </section>
+        <section id="citations-section">
+          <h2>Citations</h2>
+          <div id="citations"></div>
+        </section>
 
-      <section id="citations-section">
-        <h2>Citations</h2>
-        <div id="citations"></div>
-      </section>
-
-      <section id="additional-section" hidden>
-        <h2>Additional Sources</h2>
-        <div id="additional"></div>
-      </section>
+        <section id="additional-section" hidden>
+          <h2>Additional Sources</h2>
+          <div id="additional"></div>
+        </section>
+      </div>
     </div>
 
     <footer>
