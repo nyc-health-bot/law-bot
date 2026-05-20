@@ -11,6 +11,8 @@ gcloud functions deploy law-bot \
   --allow-unauthenticated \
   --entry-point handle_request \
   --region us-east1 \
+  --project nyc-health-law-bot \
   --source . \
   --env-vars-file env.yaml \
-  --min-instances 1
+  --min-instances 1 \
+  --quiet
