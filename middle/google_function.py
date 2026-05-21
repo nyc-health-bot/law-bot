@@ -5,8 +5,11 @@ import hmac
 import json
 import os
 import re
+import smtplib
+import ssl
 import time
 from datetime import datetime
+from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -19,8 +22,8 @@ PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_HOST = os.environ.get("PINECONE_HOST")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 TOKEN_SECRET = os.environ.get("TOKEN_SECRET", "")
-SENDGRID_KEY = os.environ.get("SENDGRID_API_KEY", "")
-FROM_EMAIL = os.environ.get("FROM_EMAIL", "")
+GMAIL_USER = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 APP_URL = os.environ.get("APP_URL", "https://mporter-dohmh.github.io/law-bot")
 
 _NY_TZ = ZoneInfo("America/New_York")
@@ -55,7 +58,7 @@ def _validate_token(token: str) -> dict:
 def _send_magic_link(email: str, token: str, expires: int) -> None:
     expires_dt = datetime.fromtimestamp(expires, tz=_NY_TZ)
     expires_str = expires_dt.strftime("%-I:%M %p ET on %B %-d, %Y")
-    link = f"{APP_URL}/?token={token}"
+    link = f"{APP_URL}?token={token}"
     body = (
         f"You requested access to the NYC DOHMH Law Bot.\n\n"
         f"Click the link below to access the tool:\n{link}\n\n"
@@ -63,18 +66,13 @@ def _send_magic_link(email: str, token: str, expires: int) -> None:
         f"Do not share this link — it is intended for your use only.\n\n"
         f"If you did not request this link, please ignore this email."
     )
-    resp = requests.post(
-        "https://api.sendgrid.com/v3/mail/send",
-        headers={"Authorization": f"Bearer {SENDGRID_KEY}", "Content-Type": "application/json"},
-        json={
-            "personalizations": [{"to": [{"email": email}]}],
-            "from": {"email": FROM_EMAIL, "name": "NYC DOHMH Law Bot"},
-            "subject": "Your NYC DOHMH Law Bot access link",
-            "content": [{"type": "text/plain", "value": body}],
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
+    msg = MIMEText(body)
+    msg["Subject"] = "NYC Health Law Bot Access Link"
+    msg["From"] = GMAIL_USER
+    msg["To"] = email
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, [email], msg.as_string())
 
 
 # --- PROMPT CACHE (TTL 60s — update prompts via gsutil cp, no redeploy needed) ---
