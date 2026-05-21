@@ -3,7 +3,6 @@ import os
 import re
 import time
 
-import numpy as np
 import requests
 
 # --- CONFIGURATION ---
@@ -49,6 +48,7 @@ EMBED_DIM = 1024
 # --- EMBEDDING ---
 
 def _truncate_vector(vector):
+    import numpy as np
     truncated = np.array(vector[:EMBED_DIM])
     norm = np.linalg.norm(truncated)
     return (truncated / norm).tolist()
@@ -113,6 +113,14 @@ def _gemini_generate(payload: dict) -> dict:
     raise RuntimeError("Gemini request failed after 5 retries")
 
 
+def _filter_citations(summary: str, valid_sections: set) -> str:
+    """Strip §-citations from summary that have no corresponding retrieved source."""
+    def clean(m):
+        kept = [s for s in re.findall(r'§([\d.\-]+)', m.group(0)) if s in valid_sections]
+        return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
+    return re.sub(r'\((?:§[\d.\-]+(?:,\s*)?)+\)', clean, summary).strip()
+
+
 # --- PIPELINE ---
 
 def structure_question(raw_user_query: str) -> str:
@@ -123,6 +131,9 @@ def structure_question(raw_user_query: str) -> str:
     }
     out = _gemini_generate(payload)
     return out["candidates"][0]["content"]["parts"][0]["text"]
+
+
+from util import normalize_text
 
 
 def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
@@ -199,11 +210,24 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         },
     }
 
-    out = _gemini_generate(payload)
+    # Call Gemini and measure time to help debug slow responses
+    start = time.time()
+    try:
+        out = _gemini_generate(payload)
+    except Exception as e:
+        # Return concise error summary so the frontend can present it
+        return {"summary": f"- I couldn't generate a response due to an upstream error: {str(e)}", "citations": []}
+    duration = time.time() - start
+
     gemini_out = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
 
+    gemini_out['summary'] = normalize_text(gemini_out.get('summary', ''))
+    if duration > 3.0:
+        note = f"Note: response generation took {duration:.1f}s."
+        gemini_out['summary'] = note + "\n" + gemini_out['summary']
+
     passage_map = {item["index"]: item.get("relevant_passages", []) for item in gemini_out["citations"]}
-    summary = gemini_out["summary"]
+    summary = _filter_citations(gemini_out["summary"], set(section_numbers))
     cited_sections = set(re.findall(r'§([\d.\-]+)', summary))
 
     citations = [

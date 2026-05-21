@@ -3,7 +3,7 @@ import os
 import re
 import time
 from dotenv import load_dotenv
-from util import post, embed_fn
+from util import post, embed_fn, normalize_text
 from pinecone import query
 
 
@@ -132,9 +132,24 @@ def structure_response(user_query, pinecone_matches):
         }
     }
 
-    gen_resp = _gemini_post(url=gen_url, payload=payload)
+    # Call Gemini and measure time to help debug slow responses
+    start = time.time()
+    try:
+        gen_resp = _gemini_post(url=gen_url, payload=payload)
+    except Exception as e:
+        # Return a concise error bullet so UI can display it
+        err_msg = f"- I couldn't generate a response due to an upstream error: {str(e)}"
+        return {"summary": err_msg, "citations": []}
+
+    duration = time.time() - start
     raw = gen_resp.json()['candidates'][0]['content']['parts'][0]['text']
     gemini_out = json.loads(raw)
+
+    gemini_out['summary'] = normalize_text(gemini_out.get('summary', ''))
+    # If generation was slow, prepend a short diagnostic note before bullets
+    if duration > 3.0:
+        note = f"Note: response generation took {duration:.1f}s."
+        gemini_out['summary'] = note + "\n" + gemini_out['summary']
 
     passage_map = {item['index']: item.get('relevant_passages', []) for item in gemini_out['citations']}
 
@@ -149,7 +164,7 @@ def structure_response(user_query, pinecone_matches):
             "full_title": sources[i]["full_title"],
             "section_title": sources[i]["section_title"],
             "url": sources[i]["url"],
-            "text": sources[i]["text"],
+            "text": normalize_text(sources[i]["text"]),
             "relevant_passages": passage_map.get(i, []),
             "cited_in_summary": section_numbers[i] in cited_sections,
         }

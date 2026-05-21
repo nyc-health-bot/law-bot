@@ -3,7 +3,6 @@ import os
 import re
 import time
 
-import numpy as np
 import requests
 
 # --- CONFIGURATION ---
@@ -49,6 +48,7 @@ EMBED_DIM = 1024
 # --- EMBEDDING ---
 
 def _truncate_vector(vector):
+    import numpy as np
     truncated = np.array(vector[:EMBED_DIM])
     norm = np.linalg.norm(truncated)
     return (truncated / norm).tolist()
@@ -133,6 +133,9 @@ def structure_question(raw_user_query: str) -> str:
     return out["candidates"][0]["content"]["parts"][0]["text"]
 
 
+from util import normalize_text
+
+
 def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
     """
     Returns {"summary": str, "citations": [{anchor, section, full_title, section_title, url, text, relevant_passages, cited_in_summary}, ...]}
@@ -207,8 +210,21 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         },
     }
 
-    out = _gemini_generate(payload)
+    # Call Gemini and measure time to help debug slow responses
+    start = time.time()
+    try:
+        out = _gemini_generate(payload)
+    except Exception as e:
+        # Return concise error summary so the frontend can present it
+        return {"summary": f"- I couldn't generate a response due to an upstream error: {str(e)}", "citations": []}
+    duration = time.time() - start
+
     gemini_out = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
+
+    gemini_out['summary'] = normalize_text(gemini_out.get('summary', ''))
+    if duration > 3.0:
+        note = f"Note: response generation took {duration:.1f}s."
+        gemini_out['summary'] = note + "\n" + gemini_out['summary']
 
     passage_map = {item["index"]: item.get("relevant_passages", []) for item in gemini_out["citations"]}
     summary = _filter_citations(gemini_out["summary"], set(section_numbers))

@@ -2,7 +2,6 @@ import requests
 import os
 import time
 from dotenv import load_dotenv
-import numpy as np
 
 load_dotenv()
 PROXIES = {'http': os.getenv('PROXY'), 'https': os.getenv('PROXY')}
@@ -23,6 +22,7 @@ def get(**kwargs):
 
 
 def truncate_vector(vector, target_dim=1024):
+    import numpy as np
     truncated = np.array(vector[:target_dim])
     norm = np.linalg.norm(truncated)
     return (truncated / norm).tolist()
@@ -95,3 +95,39 @@ def embed_fn(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT", batch_size
             raise RuntimeError("Embedding request failed after 5 retries (rate limit)")
 
     return all_embeddings
+
+
+def normalize_text(s: str) -> str:
+    """Normalize text from model outputs and sources to remove
+    common mojibake/encoding artifacts and normalize whitespace/section glyphs.
+
+    Examples handled: non-breaking spaces, BOM, stray 'Â' from Latin1 mojibake,
+    HTML entities, and ensuring the section sign is a single '§'.
+    """
+    if s is None:
+        return s
+    import unicodedata, re, html
+
+    # Unescape HTML entities first
+    s = html.unescape(s)
+    # Remove BOM and non-breaking spaces
+    s = s.replace('\ufeff', '').replace('\u00a0', ' ')
+    # Common mojibake artifacts
+    s = s.replace('Â', '')
+    s = s.replace('\xc2', '')
+    # Normalize section sign variants
+    s = s.replace('\u00a7', '§')
+    s = s.replace('\\u00a7', '§')
+    # Remove stray control characters
+    s = re.sub(r'[\r\x00\x0b\x0c]', '', s)
+    # Normalize unicode composition and whitespace
+    s = unicodedata.normalize('NFKC', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    # Also fold literal escape sequences (e.g. "\\u00a7") that can appear when
+    # model output was double-JSON-escaped
+    s = s.replace('\\u00a0', ' ')
+    s = s.replace('\\xc2', '')
+    # Normalize spacing around parenthetical § citations
+    s = re.sub(r'\s*\(\s*§', ' (§', s)
+    s = re.sub(r'§\s*\)', '§)', s)
+    return s

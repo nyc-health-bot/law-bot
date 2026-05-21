@@ -6,10 +6,11 @@ cp ../google_function.py main.py
 
 gcloud functions deploy law-bot \
   --gen2 \
-  --runtime python312 \
+  --runtime python311 \
   --trigger-http \
   --allow-unauthenticated \
   --entry-point handle_request \
   --region us-east1 \
   --source . \
-  --env-vars-file env.yaml
+  --env-vars-file env.yaml \
+  --timeout=300s
