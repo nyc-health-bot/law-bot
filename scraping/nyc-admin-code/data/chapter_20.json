@@ -1,0 +1,19 @@
+{
+  "type": "chapter",
+  "number": "20",
+  "title": "PRIMARY CARE SERVICES AND PATIENT NAVIGATION PROGRAM",
+  "source_url": "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-29900",
+  "notes": "Enacted by Local Law 2021/107, passed September 9, 2021, returned unsigned by the Mayor October 12, 2021 (took effect without signature). Some definition language (Epic Care Link, primary care services) is reconstructed from legislative snippets; verify against the enrolled bill at intro.nyc/local-laws/2021-107 before re-indexing.",
+  "sections": [
+    {
+      "section": "17-2001",
+      "title": "Definitions",
+      "text": "As used in this chapter, the following terms have the following meanings:\n\"Department\" means the department of health and mental hygiene or such other agency or entity as the mayor may designate.\n\"Epic care link\" means a web-based application that connects organizations to their community affiliates and allows for referrals into the city's public health system.\n\"Patient navigator program\" means a program which assists patients in accessing primary care and specialty services and in coordinating such care.\n\"Primary care services\" means medical services for which participants have a primary care physician or primary care practitioner."
+    },
+    {
+      "section": "17-2002",
+      "title": "Primary care services and patient navigation program",
+      "text": "The department shall, consistent with any applicable federal, state or local laws, develop and manage a primary care services and patient navigation program. No individual shall be excluded from such program due to their immigration status, employment status or a preexisting medical condition."
+    }
+  ]
+}

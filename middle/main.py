@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+import requests
 from dotenv import load_dotenv
 from util import post, embed_fn, normalize_text
 from pinecone import query
@@ -187,16 +188,14 @@ def handle_request(request):
     try:
         user_input = request.get_json().get('prompt')
 
-        # Phase 1: Rewrite the question for the search engine
-        technical_query = structure_question(user_input)
-
-        # Phase 2: Retrieve actual code data
-        matches = get_values(technical_query)
+        matches = get_values(user_input)
 
         # Phase 3: Generate formatted response
         final_answer = structure_response(user_input, matches)
 
         return {"answer": final_answer}, 200, {'Access-Control-Allow-Origin': '*'}
+    except requests.exceptions.Timeout:
+        return {"error": "The request timed out — the AI service is taking too long to respond. Please try again in a moment."}, 504, {'Access-Control-Allow-Origin': '*'}
     except Exception as e:
         return {"error": str(e)}, 500, {'Access-Control-Allow-Origin': '*'}
 

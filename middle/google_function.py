@@ -1,20 +1,87 @@
+import base64
+import concurrent.futures
+import hashlib
+import hmac
 import json
 import os
 import re
+import smtplib
+import ssl
 import time
+from datetime import datetime
+from email.mime.text import MIMEText
+from zoneinfo import ZoneInfo
 
 import requests
+from flask import Response
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get("GOOGLE_API_KEY")
 PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_HOST = os.environ.get("PINECONE_HOST")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
+TOKEN_SECRET = os.environ.get("TOKEN_SECRET", "")
+GMAIL_USER = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
+APP_URL = os.environ.get("APP_URL", "https://mporter-dohmh.github.io/law-bot")
+
+_NY_TZ = ZoneInfo("America/New_York")
 PROMPT_BUCKET = os.environ.get("PROMPT_BUCKET")
+
+# --- AUTH ---
+
+def _generate_token(email: str) -> tuple[str, int]:
+    expires = int(time.time()) + 86400
+    payload = f"{email}|{expires}"
+    sig = hmac.new(TOKEN_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    b64 = base64.urlsafe_b64encode(payload.encode()).rstrip(b"=").decode()
+    return f"{b64}.{sig}", expires
+
+
+def _validate_token(token: str) -> dict:
+    try:
+        b64, sig = token.rsplit(".", 1)
+        padding = (4 - len(b64) % 4) % 4
+        payload = base64.urlsafe_b64decode(b64 + "=" * padding).decode()
+        expected = hmac.new(TOKEN_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return {"valid": False, "reason": "invalid"}
+        email, expires_str = payload.rsplit("|", 1)
+        if int(time.time()) > int(expires_str):
+            return {"valid": False, "reason": "expired"}
+        return {"valid": True, "email": email}
+    except Exception:
+        return {"valid": False, "reason": "invalid"}
+
+
+def _send_magic_link(email: str, token: str, expires: int) -> None:
+    expires_dt = datetime.fromtimestamp(expires, tz=_NY_TZ)
+    expires_str = expires_dt.strftime("%-I:%M %p ET on %B %-d, %Y")
+    link = f"{APP_URL}?token={token}"
+    body = (
+        f"You requested access to the NYC DOHMH Law Bot.\n\n"
+        f"Click the link below to access the tool:\n{link}\n\n"
+        f"This link will expire at {expires_str}.\n\n"
+        f"Do not share this link — it is intended for your use only.\n\n"
+        f"If you did not request this link, please ignore this email."
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = "NYC Health Law Bot Access Link"
+    msg["From"] = GMAIL_USER
+    msg["To"] = email
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, [email], msg.as_string())
+
 
 # --- PROMPT CACHE (TTL 60s — update prompts via gsutil cp, no redeploy needed) ---
 _prompt_cache: dict[str, tuple[str, float]] = {}
 _PROMPT_TTL = 60
+
+# --- PINECONE RESULT CACHE (per warm instance, TTL 5 min) ---
+_query_cache: dict[str, tuple[list, float]] = {}
+_QUERY_CACHE_TTL = 300
+_QUERY_CACHE_MAX = 50
 
 
 def _fetch_prompt(name: str) -> str:
@@ -30,7 +97,7 @@ def _fetch_prompt(name: str) -> str:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.text
+    return resp.content.decode('utf-8')
 
 
 def _get_prompt(name: str) -> str:
@@ -73,7 +140,7 @@ def _embed(texts: list[str], task_type: str = "RETRIEVAL_QUERY") -> list[list[fl
 
 # --- PINECONE ---
 
-def _pinecone_query(query_text: str, max_sections: int = 10) -> list[dict]:
+def _pinecone_query(query_text: str, max_sections: int = 4) -> list[dict]:
     vector = _embed([query_text])[0]
     resp = requests.post(
         f"{PINECONE_HOST}/query",
@@ -99,6 +166,20 @@ def _pinecone_query(query_text: str, max_sections: int = 10) -> list[dict]:
     return [m for m in matches if (m["metadata"].get("code", ""), m["metadata"].get("section", "")) in top_sections]
 
 
+def _cached_pinecone_query(query_text: str) -> list[dict]:
+    import hashlib
+    key = hashlib.md5(query_text.lower().strip().encode()).hexdigest()
+    now = time.time()
+    if key in _query_cache and now - _query_cache[key][1] < _QUERY_CACHE_TTL:
+        return _query_cache[key][0]
+    result = _pinecone_query(query_text)
+    if len(_query_cache) >= _QUERY_CACHE_MAX:
+        oldest = min(_query_cache, key=lambda k: _query_cache[k][1])
+        del _query_cache[oldest]
+    _query_cache[key] = (result, now)
+    return result
+
+
 # --- GEMINI HELPERS ---
 
 def _gemini_generate(payload: dict) -> dict:
@@ -119,6 +200,86 @@ def _filter_citations(summary: str, valid_sections: set) -> str:
         kept = [s for s in re.findall(r'§([\d.\-]+)', m.group(0)) if s in valid_sections]
         return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
     return re.sub(r'\((?:§[\d.\-]+(?:,\s*)?)+\)', clean, summary).strip()
+
+
+def _build_sources(matches: list[dict]) -> list[dict]:
+    seen = {}
+    for m in matches:
+        meta = m["metadata"]
+        key = (meta.get("code", ""), meta.get("section", ""))
+        if key not in seen:
+            seen[key] = {
+                "full_title": f"{key[0]} §{key[1]}".strip(" §"),
+                "code": key[0],
+                "section": key[1],
+                "section_title": meta.get("section_title", ""),
+                "url": meta.get("source_url", ""),
+                "texts": [],
+            }
+        seen[key]["texts"].append(meta.get("text", ""))
+    return [
+        {**{k: v for k, v in entry.items() if k != "texts"},
+         "text": "\n\n".join(entry["texts"]),
+         "summary_text": entry["texts"][0][:1000] if entry["texts"] else ""}
+        for entry in seen.values()
+    ]
+
+
+def _gemini_stream(payload: dict):
+    """Yields text chunks from Gemini streaming API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+    for attempt in range(3):
+        resp = requests.post(url, json=payload, timeout=60, stream=True)
+        if resp.status_code in (429, 503):
+            resp.close()
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line and line.startswith(b"data: "):
+                try:
+                    data = json.loads(line[6:])
+                    text = data["candidates"][0]["content"]["parts"][0].get("text", "")
+                    if text:
+                        yield text
+                except (KeyError, IndexError, json.JSONDecodeError):
+                    continue
+        return
+    raise RuntimeError("Gemini streaming request failed after 3 retries")
+
+
+def _get_passages(user_query: str, sources: list[dict]) -> dict:
+    """Returns {index: [passages]} for each source."""
+    context_str = "\n\n---\n\n".join(
+        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['text']}"
+        for i, s in enumerate(sources)
+    )
+    prompt = _get_prompt("structure_passages.txt").format(
+        user_query=user_query,
+        context_str=context_str,
+        num_sources=len(sources),
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer"},
+                        "relevant_passages": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["index", "relevant_passages"],
+                },
+            },
+        },
+    }
+    out = _gemini_generate(payload)
+    items = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
+    return {item["index"]: item.get("relevant_passages", []) for item in items}
 
 
 # --- PIPELINE ---
@@ -260,29 +421,113 @@ def handle_request(request):
             "Access-Control-Allow-Headers": "Content-Type",
         })
 
-    try:
-        user_input = request.get_json().get("prompt")
+    json_headers = {"Content-Type": "application/json", **cors_headers}
+    body = request.get_json(silent=True) or {}
+    req_type = body.get("type")
 
-        technical_query = structure_question(user_input)
-        matches = _pinecone_query(technical_query)
-
-        if not matches:
+    if req_type == "send-link":
+        email = body.get("email", "").strip().lower()
+        if not email.endswith("@health.nyc.gov"):
             return (
-                json.dumps({"answer": {"summary": "I couldn't find any relevant sections for that question.", "citations": []}}),
-                200,
-                {**cors_headers, "Content-Type": "application/json"},
+                json.dumps({"error": "Access is restricted to NYC Dept of Health employees. Only @health.nyc.gov addresses are permitted."}),
+                403, json_headers,
             )
+        try:
+            token, expires = _generate_token(email)
+            _send_magic_link(email, token, expires)
+            return (json.dumps({"ok": True}), 200, json_headers)
+        except Exception as e:
+            print(f"send-link error: {e}")
+            return (json.dumps({"error": "Failed to send email. Please try again."}), 500, json_headers)
 
-        answer = structure_response(user_input, matches)
-        return (
-            json.dumps({"answer": answer}),
-            200,
-            {**cors_headers, "Content-Type": "application/json"},
-        )
+    if req_type == "verify-token":
+        result = _validate_token(body.get("token", ""))
+        return (json.dumps(result), 200, json_headers)
 
+    sse_headers = {
+        **cors_headers,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+
+    def _sse(obj):
+        return f"data: {json.dumps(obj)}\n\n"
+
+    # Validate auth token before doing any work
+    token_result = _validate_token(body.get("token", ""))
+    if not token_result["valid"]:
+        def _auth_err():
+            yield _sse({"type": "auth_error", "reason": token_result["reason"]})
+        return Response(_auth_err(), headers=sse_headers)
+
+    # Run Pinecone lookup before opening the stream so errors return cleanly
+    try:
+        user_input = body.get("prompt", "")
+        matches = _cached_pinecone_query(user_input)
+    except requests.exceptions.Timeout:
+        def _timeout():
+            yield _sse({"type": "error", "message": "The request timed out — the AI service is taking too long to respond. Please try again in a moment."})
+        return Response(_timeout(), headers=sse_headers)
     except Exception as e:
-        return (
-            json.dumps({"error": str(e)}),
-            500,
-            {**cors_headers, "Content-Type": "application/json"},
-        )
+        def _err():
+            yield _sse({"type": "error", "message": str(e)})
+        return Response(_err(), headers=sse_headers)
+
+    if not matches:
+        def _no_results():
+            yield _sse({"type": "metadata", "citations": []})
+            yield _sse({"type": "done", "summary": "- I couldn't find any relevant sections for that question.", "cited_sections": []})
+            yield _sse({"type": "passages", "passages": {}})
+        return Response(_no_results(), headers=sse_headers)
+
+    sources = _build_sources(matches)
+    valid_sections = {s["section"] for s in sources}
+    context_str = "\n\n---\n\n".join(
+        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['summary_text']}"
+        for i, s in enumerate(sources)
+    )
+    citation_meta = [
+        {
+            "anchor": f"citation-{i}",
+            "section": s["section"],
+            "code": s["code"],
+            "full_title": s["full_title"],
+            "section_title": s["section_title"],
+            "url": s["url"],
+            "text": s["text"],
+        }
+        for i, s in enumerate(sources)
+    ]
+    summary_payload = {
+        "contents": [{"parts": [{"text": _get_prompt("structure_summary.txt").format(
+            user_query=user_input, context_str=context_str)}]}],
+        "generationConfig": {"temperature": 0},
+    }
+
+    def generate():
+        yield _sse({"type": "metadata", "citations": citation_meta})
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            passages_future = executor.submit(_get_passages, user_input, sources)
+
+            raw_summary = ""
+            try:
+                for chunk in _gemini_stream(summary_payload):
+                    raw_summary += chunk
+                    yield _sse({"type": "chunk", "text": chunk})
+            except Exception as e:
+                yield _sse({"type": "error", "message": str(e)})
+                return
+
+            filtered = _filter_citations(raw_summary, valid_sections)
+            cited_sections = list(re.findall(r'§([\d.\-]+)', filtered))
+            yield _sse({"type": "done", "summary": filtered, "cited_sections": cited_sections})
+
+            try:
+                passages = passages_future.result(timeout=30)
+            except Exception:
+                passages = {}
+            yield _sse({"type": "passages", "passages": passages})
+
+    return Response(generate(), headers=sse_headers)

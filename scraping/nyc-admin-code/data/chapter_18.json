@@ -1,0 +1,29 @@
+{
+  "type": "chapter",
+  "number": "18",
+  "title": "POLICE AND CORRECTIONAL HEALTHCARE EVALUATION AND SHARING",
+  "source_url": "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-130173",
+  "notes": "Chapter 18 was enacted by Local Law 2016/124 (Intro. 1183-2016), signed October 18, 2016, effective April 18, 2017. Amended by Local Law 2019/190, effective March 16, 2020 (changing 'inmate' to 'incarcerated individual' throughout). Further amended by 2021 N.Y. Laws Ch. 322, effective August 2, 2021. The chapter requires sharing of police health screening reports with correctional health providers when an arrestee enters DOC custody.",
+  "sections": [
+    {
+      "section": "17-1801",
+      "title": "Definitions",
+      "text": "For the purposes of this chapter, the following terms have the following meanings:\n\"Correctional health services\" means any health care entity designated by the city of New York as the agency or agencies responsible for health services for incarcerated individuals in the care and custody of the New York city department of correction, and when the responsibility is contractually shared with an outside provider, this term shall also apply to such contractual arrangement.\n\"Health care provider\" means any person licensed or certified under federal or New York state law to provide medical services, including but not limited to doctors, nurses and emergency personnel.\n\"Health evaluation\" means any evaluation of an incarcerated individual's health and mental health upon their admission to the custody of the department of correction pursuant to minimum standards of incarcerated individual care established by the board of correction.\n\"Incarcerated individual\" means any person in the custody of the New York city department of correction.\n\"Screened\" means evaluated by a health care provider."
+    },
+    {
+      "section": "17-1802",
+      "title": "Health information from police screening",
+      "text": "The department or its designee shall establish procedures to make available to correctional health services any report created pursuant to section 14-163 of this code reflecting results of a health and mental health screening of any individual who is transferred to the custody of the department of correction. Such reports shall be made available at such time as a health evaluation of such individual is conducted, and shall be provided in a format that is accessible to health care providers conducting such evaluation."
+    },
+    {
+      "section": "17-1803",
+      "title": "Health information from screening for incarcerated individuals",
+      "text": "The department or its designee shall establish procedures to make available reports received from the New York city police department pursuant to section 14-163 of this code to any health care provider in a department of correction facility conducting a health evaluation, at such time as a health evaluation is conducted."
+    },
+    {
+      "section": "17-1804",
+      "title": "Rules",
+      "text": "The commissioner may promulgate such rules as may be necessary for the implementation of this chapter."
+    }
+  ]
+}

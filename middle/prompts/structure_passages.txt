@@ -1,0 +1,8 @@
+You are an expert NYC Health Inspector.
+
+Question: {user_query}
+
+Sources:
+{context_str}
+
+Return a JSON array with exactly {num_sources} objects, one per source in order. Each object must have "index" (integer, 0-based) and "relevant_passages" (a list of verbatim quotes copied ONLY from the TEXT of the source with that exact index — do not quote text from any other source — include passages that directly answer or relate to the question — each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if not relevant).

@@ -1,0 +1,39 @@
+{
+  "type": "chapter",
+  "number": "16",
+  "title": "ANIMAL ABUSE REGISTRATION ACT",
+  "source_url": "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-133931",
+  "notes": "Enacted by Local Law 2014/004, effective October 2, 2014. Sections 17-1602, 17-1603, 17-1604, 17-1605 were amended by Local Law 2017/016.",
+  "sections": [
+    {
+      "section": "17-1601",
+      "title": "Definitions",
+      "text": "For the purposes of this chapter, the following terms shall have the following meanings:\na. \"Animal abuse crime\" shall mean any of the following:\n1. animal fighting, as defined in section three hundred fifty-one of the agriculture and markets law;\n2. overdriving, torturing or injuring animals; failure to provide proper sustenance, as defined in section three hundred fifty-three of the agriculture and markets law;\n3. aggravated cruelty to animals, as defined in section three hundred fifty-three-a of the agriculture and markets law;\n4. abandonment of animals, as defined in section three hundred fifty-five of the agriculture and markets law;\n5. failure to provide proper food and drink to impounded animal, as defined in section three hundred fifty-six of the agriculture and markets law;\n6. interference with or injury to certain domestic animals, as defined in section three hundred fifty-nine of the agriculture and markets law;\n7. poisoning or attempting to poison animals, as defined in section three hundred sixty of the agriculture and markets law;\n8. harming a police animal in the second degree, as defined in section 242.10 of the penal code;\n9. harming a service animal in the first degree, as defined in section 242.15 of the penal code; or\n10. an offense in any other jurisdiction which includes all of the essential elements of any such crime provided for in paragraph one, two, three, four, five, six, seven, eight, or nine of this subdivision.\nb. \"Animal shelter\" shall mean any full service shelter, as defined in subdivision d of section 17-802 of this code, or other facility that makes dogs and cats available for adoption whether or not a fee for such adoption is charged.\nc. \"Commissioner\" shall mean the commissioner of the department designated pursuant to subdivision a of section 17-1602 of this chapter.\nd. \"Authorized entity\" shall mean any of the following: a humane society duly incorporated in the state of New York, a society for the prevention of cruelty to animals duly incorporated in the state of New York, a dog or cat protective associations duly incorporated in the state of New York, an animal control officer, a pet shop, a veterinarian, an animal rescue, or an animal shelter operating in the city of New York.\ne. \"Department\" means the agency designated to implement the provisions of this chapter pursuant to subdivision a of section 17-1602 of this chapter."
+    },
+    {
+      "section": "17-1602",
+      "title": "Creation of animal abuse registry",
+      "text": "a. The mayor shall designate an agency to implement the provisions of this chapter and shall report such designation to the speaker of the council.\nb. The department shall create, manage and maintain an electronic registry of individuals living in the city of New York who have been convicted of an animal abuse crime and who have registered with the department pursuant to this chapter.\nc. The information maintained in the registry created pursuant to this section shall only be made available to law enforcement agencies, district attorneys or when otherwise required by law, and shall otherwise be kept confidential, provided, however, that the department shall grant authorized entities the password-protected ability to electronically query the registry using a person's name, driver's license or non-driver photo ID card number, or other identifying information determined by the commissioner, and to receive in response to such query electronic notice of whether such person is prohibited from owning an animal under section 17-1604 of this chapter."
+    },
+    {
+      "section": "17-1603",
+      "title": "Animal abuse registration requirements",
+      "text": "a. Any person eighteen years of age or older who resides in the city of New York and has been convicted of an animal abuse crime on or after the effective date of the local law that added this chapter shall personally appear before the department at a location determined by the commissioner to register. Such person shall appear and register within five days following such person's release from incarceration or if such person was not incarcerated within five days from the date of such person's sentencing. The department shall photograph the registrant at the time of registration.\nb. The registrant's name, all aliases used, date of birth, sex, complexion, race or ethnicity, height, weight, eye color, number of any driver's license or non-driver photo ID card, home address and/or expected place of residence, and photograph shall be stored in the animal abuse registry.\nc. Every person required to register pursuant to this section shall verify his or her registration information with the department no less frequently than once per year and shall immediately notify the department of any change in his or her address or any other required registration information.\nd. Any person required to register pursuant to this section who fails to do so, or who fails to comply with the requirements of subdivision c of this section, shall be guilty of a misdemeanor punishable by incarceration for not more than one year or a fine of up to one thousand dollars, or both.\ne. Any person required to register pursuant to this section shall remain on the animal abuse registry for a period of five years, provided that the commissioner may promulgate rules extending the period of registration for persons convicted of multiple animal abuse crimes.\nf. The duty to register pursuant to this section shall commence on the date of conviction for any person who is not sentenced to a period of incarceration, or upon the release from incarceration for any person sentenced to a period of incarceration."
+    },
+    {
+      "section": "17-1604",
+      "title": "Prohibition on contact with animals",
+      "text": "A person who is registered or required to register pursuant to section 17-1603 shall not own, possess, reside with, have custody of, or intentionally engage in any physical contact with any animal. Any person who violates any provision of this section shall be guilty of a misdemeanor punishable by incarceration for not more than one year or a fine of up to one thousand dollars, or both."
+    },
+    {
+      "section": "17-1605",
+      "title": "Prohibition of transfers of animals to animal abusers",
+      "text": "a. Prior to the exchange or transfer of ownership of any animal in the care of an authorized entity operating in the city of New York, an employee or volunteer of such entity shall consult the animal abuse registry to determine whether the person seeking ownership of such animal is listed on the animal abuse registry.\nb. No entity required to consult the animal abuse registry shall exchange or transfer the ownership of any animal to any person listed on the animal abuse registry.\nc. Any authorized entity that violates any provision of this section shall be subject to a civil penalty of not less than five hundred dollars and not more than two thousand dollars for each violation."
+    },
+    {
+      "section": "17-1606",
+      "title": "Rules",
+      "text": "The commissioner may promulgate rules necessary for the implementation of this chapter."
+    }
+  ]
+}

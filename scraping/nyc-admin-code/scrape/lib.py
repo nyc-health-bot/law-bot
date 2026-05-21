@@ -48,6 +48,20 @@ CHAPTERS = [
             BASE + "/t17/c14/index.html"),
     ("15", "FOOD SERVICE ESTABLISHMENTS",
             BASE + "/t17/c15/index.html"),
+    # Chapters 16–20 are not present on nycadmincode.readthedocs.io (added after the site's
+    # last update). Their JSON files were created manually from amlegal.com source text and
+    # local law enrolled bills. The orchestrator skips chapters whose JSON already exists, so
+    # these entries serve as documentation only — do not attempt to re-scrape from the URLs below.
+    ("16", "ANIMAL ABUSE REGISTRATION ACT",
+            "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-133931"),
+    ("17", "SALE OF ANIMALS",
+            "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-130157"),
+    ("18", "POLICE AND CORRECTIONAL HEALTHCARE EVALUATION AND SHARING",
+            "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-130173"),
+    ("19", "FORCE-FED PRODUCTS",
+            "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-114006"),
+    ("20", "PRIMARY CARE SERVICES AND PATIENT NAVIGATION PROGRAM",
+            "https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-29900"),
 ]
 
 

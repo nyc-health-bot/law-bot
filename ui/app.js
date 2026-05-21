@@ -1,15 +1,104 @@
 const API_URL = 'https://us-east1-nyc-health-law-bot.cloudfunctions.net/law-bot';
 
+// --- AUTH ---
+
+let _authToken = null;
+
+const authGateEl     = document.getElementById('auth-gate');
+const searchSection  = document.getElementById('search-section');
+const authFormEl     = document.getElementById('auth-form');
+const authEmailEl    = document.getElementById('auth-email');
+const authSubmitEl   = document.getElementById('auth-submit');
+const authMsgEl      = document.getElementById('auth-msg');
+
+function showAuthGate(message, isError) {
+  authGateEl.hidden = false;
+  searchSection.hidden = true;
+  if (message) {
+    authMsgEl.textContent = message;
+    authMsgEl.className = isError === false ? 'success' : 'error';
+    authMsgEl.hidden = false;
+  }
+}
+
+function showSearch(token) {
+  _authToken = token;
+  authGateEl.hidden = true;
+  searchSection.hidden = false;
+}
+
+(async function initAuth() {
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) { showAuthGate(); return; }
+
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'verify-token', token }),
+    });
+    const data = await resp.json();
+    if (data.valid) {
+      showSearch(token);
+    } else if (data.reason === 'expired') {
+      showAuthGate('Your access link has expired. Enter your email to request a new one.');
+    } else {
+      showAuthGate('Invalid access link. Enter your email to request a new one.');
+    }
+  } catch {
+    showAuthGate('Could not verify your access link. Enter your email to request a new one.');
+  }
+})();
+
+authFormEl.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = authEmailEl.value.trim().toLowerCase();
+
+  authSubmitEl.disabled = true;
+  authSubmitEl.textContent = 'Sending…';
+  authMsgEl.hidden = true;
+
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'send-link', email }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      authMsgEl.textContent = `A link has been sent to ${email}. Check your inbox to access the tool.`;
+      authMsgEl.className = 'success';
+      authMsgEl.hidden = false;
+      authEmailEl.value = '';
+    } else {
+      authMsgEl.textContent = data.error || 'Failed to send email. Please try again.';
+      authMsgEl.className = 'error';
+      authMsgEl.hidden = false;
+    }
+  } catch {
+    authMsgEl.textContent = 'Failed to send email. Please try again.';
+    authMsgEl.className = 'error';
+    authMsgEl.hidden = false;
+  } finally {
+    authSubmitEl.disabled = false;
+    authSubmitEl.textContent = 'Send Link';
+  }
+});
+
+// --- SEARCH ---
+
 const CODE_FILES = {
-  'NYC Health Code':  'data/nyc-health-code.json',
-  'NYC Admin Code':   'data/nyc-admin-code.json',
-  'NYS Sanitary Code': 'data/nys-sanitary-code.json',
+  'NYC Health Code':            'data/nyc-health-code.json',
+  'Rules of the City of New York': 'data/nyc-rules.json',
+  'NYC Admin Code':             'data/nyc-admin-code.json',
+  'NYS Sanitary Code':          'data/nys-sanitary-code.json',
 };
 const sectionCache = {};  // filename -> { section: fullText }
 
 const form        = document.getElementById('search-form');
 const input       = document.getElementById('question');
 const loadingEl   = document.getElementById('loading');
+const slowMsgEl   = document.getElementById('slow-msg');
 const errorEl     = document.getElementById('error');
 const errorMsg    = document.getElementById('error-msg');
 const resultsEl   = document.getElementById('results');
@@ -26,30 +115,75 @@ form.addEventListener('submit', async (e) => {
   setLoading(true);
   clearResults();
 
+  let citations = [];
+  let rawSummary = '';
+
   try {
     const resp = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: question }),
+      body: JSON.stringify({ prompt: question, token: _authToken }),
     });
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error);
-    render(data.answer);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(part.slice(6)); } catch { continue; }
+
+        if (event.type === 'metadata') {
+          citations = event.citations;
+          setLoading(false);
+          renderCitationShells(citations);
+          resultsEl.hidden = false;
+        } else if (event.type === 'chunk') {
+          rawSummary += event.text;
+          summaryEl.textContent = rawSummary;
+        } else if (event.type === 'done') {
+          finalizeSummary(event.summary, event.cited_sections, citations);
+        } else if (event.type === 'passages') {
+          applyPassages(citations, event.passages);
+        } else if (event.type === 'auth_error') {
+          setLoading(false);
+          const msg = event.reason === 'expired'
+            ? 'Your access link has expired. Enter your email to request a new one.'
+            : 'Invalid access link. Enter your email to request a new one.';
+          showAuthGate(msg);
+          return;
+        } else if (event.type === 'error') {
+          throw new Error(event.message);
+        }
+      }
+    }
   } catch (err) {
     showError(err.message);
-  } finally {
     setLoading(false);
   }
 });
 
-function render(answer) {
-  const { summary, citations } = answer;
+function renderCitationShells(citations) {
+  citationsEl.innerHTML = '';
+  additionalEl.innerHTML = '';
+  additionalSection.hidden = true;
+  citations.forEach(c => citationsEl.appendChild(makeCard(c)));
+}
 
-  // Build section-number -> anchor map for linking section-refs in summary
+function finalizeSummary(summary, citedSections, citations) {
+  const cited = new Set(citedSections);
   const sectionMap = {};
   for (const c of citations) sectionMap[c.section] = c.anchor;
 
-  // Render summary markdown then linkify section references
   let html = marked.parse(summary);
   html = html.replace(/§([\d.\-]+)/g, (match, sec) => {
     const anchor = sectionMap[sec];
@@ -59,7 +193,6 @@ function render(answer) {
   });
   summaryEl.innerHTML = html;
 
-  // Clicking a section-link scrolls to and expands the citation
   summaryEl.querySelectorAll('a.section-link').forEach(a => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
@@ -72,17 +205,29 @@ function render(answer) {
     });
   });
 
-  const cited      = citations.filter(c => c.cited_in_summary);
-  const additional = citations.filter(c => !c.cited_in_summary);
+  const citedList      = citations.filter(c => cited.has(c.section));
+  const additionalList = citations.filter(c => !cited.has(c.section));
 
   citationsEl.innerHTML = '';
-  cited.forEach(c => citationsEl.appendChild(makeCard(c)));
+  citedList.forEach(c => { c.cited_in_summary = true; citationsEl.appendChild(makeCard(c)); });
 
   additionalEl.innerHTML = '';
-  additionalSection.hidden = additional.length === 0;
-  additional.forEach(c => additionalEl.appendChild(makeCard(c)));
+  additionalSection.hidden = additionalList.length === 0;
+  additionalList.forEach(c => { c.cited_in_summary = false; additionalEl.appendChild(makeCard(c)); });
+}
 
-  resultsEl.hidden = false;
+function applyPassages(citations, passages) {
+  for (const [idx, passList] of Object.entries(passages)) {
+    const c = citations[parseInt(idx)];
+    if (c) c.relevant_passages = passList;
+  }
+  // Re-render any already-expanded card bodies with highlights
+  document.querySelectorAll('.citation-card').forEach(card => {
+    const body = card.querySelector('.citation-body');
+    if (body.dataset.loaded && body._fullText && card._citation && card._citation.relevant_passages) {
+      body.innerHTML = highlightPassages(body._fullText, card._citation.relevant_passages);
+    }
+  });
 }
 
 function makeCard(citation) {
@@ -140,7 +285,8 @@ async function expandCard(card) {
     icon.textContent = '▼';
     const citation = card._citation;
     const text = await fetchSectionText(citation);
-    body.innerHTML = highlightPassages(text, citation.relevant_passages);
+    body._fullText = text;
+    body.innerHTML = highlightPassages(text, citation.relevant_passages || []);
     body.dataset.loaded = '1';
   } else {
     body.hidden = false;
@@ -222,8 +368,13 @@ function escHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+let _slowTimer = null;
+
 function setLoading(on) {
   loadingEl.hidden = !on;
+  slowMsgEl.hidden = true;
+  clearTimeout(_slowTimer);
+  if (on) _slowTimer = setTimeout(() => { slowMsgEl.hidden = false; }, 8000);
 }
 
 function showError(msg) {

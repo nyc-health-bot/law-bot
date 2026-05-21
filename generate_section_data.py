@@ -81,21 +81,28 @@ def full_text(title: str, body: str) -> str:
     return f"{title}\n\n{body}".strip()
 
 
-# --- NYC Health Code ---
+# --- NYC Health Code + Rules of the City of New York ---
 nyc_health = {}
+nyc_rules = {}
 for f in sorted((ROOT / "scraping/nyc-health-code/data").glob("*.json")):
     data = json.loads(f.read_text(encoding="utf-8", errors="replace"))
+    target = nyc_rules if data.get("type") == "chapter" else nyc_health
     for section in data.get("sections", []):
         sec_num = section.get("section", "").strip()
         if not sec_num:
             continue
         body = reflow_nyc_health(clean_page_numbers(section.get("text", "").strip()))
-        nyc_health[sec_num] = full_text(section.get("title", "").strip(), body)
+        target[sec_num] = full_text(section.get("title", "").strip(), body)
 
 (OUT_DIR / "nyc-health-code.json").write_text(
     json.dumps(nyc_health, ensure_ascii=False, indent=None), encoding="utf-8"
 )
 print(f"NYC Health Code: {len(nyc_health)} sections")
+
+(OUT_DIR / "nyc-rules.json").write_text(
+    json.dumps(nyc_rules, ensure_ascii=False, indent=None), encoding="utf-8"
+)
+print(f"Rules of the City of New York: {len(nyc_rules)} sections")
 
 
 # --- NYC Admin Code ---
