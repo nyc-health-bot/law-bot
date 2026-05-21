@@ -294,7 +294,22 @@ def structure_question(raw_user_query: str) -> str:
     return out["candidates"][0]["content"]["parts"][0]["text"]
 
 
-from util import normalize_text
+def normalize_text(s: str) -> str:
+    if s is None:
+        return s
+    import unicodedata
+    import html as _html
+    s = _html.unescape(s)
+    s = s.replace('﻿', '').replace(' ', ' ')
+    s = s.replace('Â', '').replace('\xc2', '')
+    s = s.replace('§', '§').replace('\\u00a7', '§')
+    s = re.sub(r'[\r\x00\x0b\x0c]', '', s)
+    s = unicodedata.normalize('NFKC', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    s = s.replace('\\u00a0', ' ').replace('\\xc2', '')
+    s = re.sub(r'\s*\(\s*§', ' (§', s)
+    s = re.sub(r'§\s*\)', '§)', s)
+    return s
 
 
 def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
