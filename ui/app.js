@@ -185,7 +185,7 @@ function finalizeSummary(summary, citedSections, citations) {
   for (const c of citations) sectionMap[c.section] = c.anchor;
 
   let html = marked.parse(summary);
-  html = html.replace(/§([\d.\-]+)/g, (match, sec) => {
+  html = html.replace(/§([\w.\-]+)/g, (match, sec) => {
     const anchor = sectionMap[sec];
     return anchor
       ? `<a href="#${anchor}" class="section-link" data-anchor="${anchor}">${match}</a>`

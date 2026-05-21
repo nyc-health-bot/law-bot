@@ -7,9 +7,12 @@ def get_chunks(admin_code_path, max_chars=2000):
         if file_path.suffix != '.json':
             continue
         data = json.loads(file_path.read_text(encoding='utf-8', errors='replace'))
+        chapter_title = data.get("title", "").strip()
         for section in data.get("sections", []):
+            section_title = section.get("title", "").strip()
+            title = f"{chapter_title} — {section_title}" if chapter_title else section_title
             chunks.extend(make_chunks(
-                title=section.get("title", "").strip(),
+                title=title,
                 body=section.get("text", "").strip(),
                 metadata={
                     "code": "NYC Admin Code",

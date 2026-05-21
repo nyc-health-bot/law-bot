@@ -194,6 +194,94 @@ def _gemini_generate(payload: dict) -> dict:
     raise RuntimeError("Gemini request failed after 5 retries")
 
 
+def _filter_citations(summary: str, valid_sections: set) -> str:
+    """Strip §-citations from summary that have no corresponding retrieved source."""
+    def clean(m):
+        kept = [s for s in re.findall(r'§([\w.\-]+)', m.group(0)) if s in valid_sections]
+        return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
+    return re.sub(r'\((?:§[\w.\-]+(?:,\s*)?)+\)', clean, summary).strip()
+
+
+def _build_sources(matches: list[dict]) -> list[dict]:
+    seen = {}
+    for m in matches:
+        meta = m["metadata"]
+        key = (meta.get("code", ""), meta.get("section", ""))
+        if key not in seen:
+            seen[key] = {
+                "full_title": f"{key[0]} §{key[1]}".strip(" §"),
+                "code": key[0],
+                "section": key[1],
+                "section_title": meta.get("section_title", ""),
+                "url": meta.get("source_url", ""),
+                "texts": [],
+            }
+        seen[key]["texts"].append(meta.get("text", ""))
+    return [
+        {**{k: v for k, v in entry.items() if k != "texts"},
+         "text": "\n\n".join(entry["texts"]),
+         "summary_text": entry["texts"][0][:1000] if entry["texts"] else ""}
+        for entry in seen.values()
+    ]
+
+
+def _gemini_stream(payload: dict):
+    """Yields text chunks from Gemini streaming API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+    for attempt in range(3):
+        resp = requests.post(url, json=payload, timeout=60, stream=True)
+        if resp.status_code in (429, 503):
+            resp.close()
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line and line.startswith(b"data: "):
+                try:
+                    data = json.loads(line[6:])
+                    text = data["candidates"][0]["content"]["parts"][0].get("text", "")
+                    if text:
+                        yield text
+                except (KeyError, IndexError, json.JSONDecodeError):
+                    continue
+        return
+    raise RuntimeError("Gemini streaming request failed after 3 retries")
+
+
+def _get_passages(user_query: str, sources: list[dict]) -> dict:
+    """Returns {index: [passages]} for each source."""
+    context_str = "\n\n---\n\n".join(
+        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['text']}"
+        for i, s in enumerate(sources)
+    )
+    prompt = _get_prompt("structure_passages.txt").format(
+        user_query=user_query,
+        context_str=context_str,
+        num_sources=len(sources),
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer"},
+                        "relevant_passages": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["index", "relevant_passages"],
+                },
+            },
+        },
+    }
+    out = _gemini_generate(payload)
+    items = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
+    return {item["index"]: item.get("relevant_passages", []) for item in items}
+
+
 # --- PIPELINE ---
 
 def structure_question(raw_user_query: str) -> str:
@@ -301,7 +389,7 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
 
     passage_map = {item["index"]: item.get("relevant_passages", []) for item in gemini_out["citations"]}
     summary = _filter_citations(gemini_out["summary"], set(section_numbers))
-    cited_sections = set(re.findall(r'§([\d.\-]+)', summary))
+    cited_sections = set(re.findall(r'§([\w.\-]+)',summary))
 
     citations = [
         {
@@ -433,7 +521,7 @@ def handle_request(request):
                 return
 
             filtered = _filter_citations(raw_summary, valid_sections)
-            cited_sections = list(re.findall(r'§([\d.\-]+)', filtered))
+            cited_sections = list(re.findall(r'§([\w.\-]+)',filtered))
             yield _sse({"type": "done", "summary": filtered, "cited_sections": cited_sections})
 
             try:

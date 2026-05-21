@@ -8,16 +8,21 @@ PROXIES = {'http': os.getenv('PROXY'), 'https': os.getenv('PROXY')}
 EMBED_MODEL = "models/gemini-embedding-001"
 IN_CODESPACE = bool(os.getenv('CODESPACE_NAME'))
 
+_bypass_session = requests.Session()
+_bypass_session.trust_env = False
+
 
 def post(**kwargs):
-    if not IN_CODESPACE:
-        kwargs.update({'proxies': PROXIES, 'verify': False})
+    if IN_CODESPACE:
+        return _bypass_session.post(**kwargs)
+    kwargs.update({'proxies': PROXIES, 'verify': False})
     return requests.post(**kwargs)
 
 
 def get(**kwargs):
-    if not IN_CODESPACE:
-        kwargs.update({'proxies': PROXIES, 'verify': False})
+    if IN_CODESPACE:
+        return _bypass_session.get(**kwargs)
+    kwargs.update({'proxies': PROXIES, 'verify': False})
     return requests.get(**kwargs)
 
 
