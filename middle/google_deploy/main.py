@@ -220,7 +220,11 @@ def _build_sources(matches: list[dict]) -> list[dict]:
     return [
         {**{k: v for k, v in entry.items() if k != "texts"},
          "text": "\n\n".join(entry["texts"]),
-         "summary_text": entry["texts"][0][:1000] if entry["texts"] else ""}
+         "summary_text": "\n\n".join(entry["texts"])[:2500],
+         "passage_text": "\n\n".join(
+             t.split("\n\n", 1)[1] if "\n\n" in t else t
+             for t in entry["texts"]
+         )}
         for entry in seen.values()
     ]
 
@@ -251,7 +255,7 @@ def _gemini_stream(payload: dict):
 def _get_passages(user_query: str, sources: list[dict]) -> dict:
     """Returns {index: [passages]} for each source."""
     context_str = "\n\n---\n\n".join(
-        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['text']}"
+        f"[{i}] {s['full_title']}\nURL: {s['url']}\nTEXT: {s['passage_text']}"
         for i, s in enumerate(sources)
     )
     prompt = _get_prompt("structure_passages.txt").format(
