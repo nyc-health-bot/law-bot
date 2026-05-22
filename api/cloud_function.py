@@ -437,6 +437,7 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.1,
+            "maxOutputTokens": 65536,
             "responseMimeType": "application/json",
             "responseSchema": {
                 "type": "object",
@@ -470,7 +471,11 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         return {"summary": f"- I couldn't generate a response due to an upstream error: {str(e)}", "citations": []}
     duration = time.time() - start
 
-    gemini_out = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
+    try:
+        gemini_out = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        finish_reason = out.get("candidates", [{}])[0].get("finishReason", "unknown")
+        return {"summary": f"- I couldn't generate a response due to an upstream error: response truncated (finishReason={finish_reason})", "citations": []}
 
     gemini_out['summary'] = normalize_text(gemini_out.get('summary', ''))
     # Model sometimes omits \n between bullets — insert before any "- " following a citation group

@@ -128,43 +128,86 @@ class TestGymsPrompt(unittest.TestCase):
 
     def test_condition_3_definitions_appear_first(self):
         """Issue: summary no longer started with a definition bullet even when a source
-        defines the regulated establishments (e.g. 'means any place...').
-        When a retrieved source contains a definition relevant to the query, the first
-        bullet must be that definition."""
-        # Match true legal definitions: a capitalized term (optionally quoted) followed
-        # by 'means' or 'shall mean' at the start of a sentence — not mid-sentence uses.
+        defines the regulated establishments (e.g. 'health studio means any place...').
+        When a retrieved source contains a gym-relevant definition, the first bullet must
+        be that definition. Generic administrative definitions (e.g. 'Adequate means...')
+        do not count — only definitions of gym/fitness/regulated-entity terms trigger this."""
         definition_re = re.compile(
-            r'(?:^|[.!?]\s+)'          # start of text or after sentence-ending punctuation
-            r'(?:"[^"]+"|[A-Z]\w*(?:\s+\w+){0,4})'  # term: quoted or 1–5 capitalized words
-            r'\s+(?:means|shall mean)\s+\w',          # followed immediately by 'means'
+            r'(?:^|[.!?]\s+)'
+            r'(?:"[^"]+"|[A-Z]\w*(?:\s+\w+){0,4})'
+            r'\s+(?:means|shall mean)\s+\w',
             re.MULTILINE
         )
-        source_has_definition = any(
-            "definition" in s.get("section_title", "").lower() or
-            bool(definition_re.search(s["text"]))
+        gym_terms = {"gym", "health studio", "health club", "health spa", "gymnasium",
+                     "fitness", "pool", "swimming", "bathing", "exercise", "locker",
+                     "athletic", "martial arts", "physical fitness"}
+        # Only trigger when a source defines a gym/fitness-relevant term, not generic
+        # administrative definitions like "Adequate means..." or "Approved means..."
+        source_has_gym_definition = any(
+            (
+                "definition" in s.get("section_title", "").lower() or
+                bool(definition_re.search(s["text"]))
+            ) and any(term in s["text"].lower() for term in gym_terms)
             for s in self.citations
         )
-        if not source_has_definition:
-            self.skipTest("No definition found in retrieved sources for this run")
+        if not source_has_gym_definition:
+            self.skipTest("No gym-relevant definition in retrieved sources for this run")
 
         bullet_lines = [l.strip() for l in self.summary.splitlines() if l.strip().startswith("- ")]
         self.assertGreater(len(bullet_lines), 0, "Summary has no bullet lines")
 
         first_bullet = bullet_lines[0].lower()
+        has_def_first = (
+            bool(definition_re.search(bullet_lines[0])) or
+            "means " in first_bullet or
+            "shall mean " in first_bullet
+        )
+        also_gym_relevant = any(term in first_bullet for term in gym_terms)
         self.assertTrue(
-            bool(definition_re.search(bullet_lines[0])) or "means " in first_bullet or "shall mean " in first_bullet,
-            f"First bullet is not a definition even though sources contain one:\n{bullet_lines[0]}"
+            has_def_first and also_gym_relevant,
+            f"First bullet is not a gym-relevant definition even though sources contain one:\n{bullet_lines[0]}"
         )
 
 
     def test_condition_4_irrelevant_sources_excluded(self):
         """Issue: refrigerator disposal regulations appeared in summary for gym query.
-        Sources clearly unrelated to gyms (e.g. appliance disposal) must not be summarized."""
-        irrelevant_terms = ["refrigerator"]
-        for term in irrelevant_terms:
+        Observed: '- Every person who discards a refrigerator must remove the refrigerator door,
+        locking device, or hinges before placing the refrigerator on the street for collection. (§131.13)'
+        This test always injects §131.13 alongside a real gym source so the RELEVANCE prompt
+        rule is exercised regardless of what Pinecone returned in this run."""
+        fridge_match = {
+            "score": 0.70,
+            "metadata": {
+                "code": "NYC Health Code",
+                "section": "131.13",
+                "section_title": "Discarding refrigerators",
+                "source_url": "https://rules.cityofnewyork.us/rule/nyc-health-code-article-131/#131.13",
+                "text": (
+                    "NYC Health Code §131.13\n\n"
+                    "Every person who discards a refrigerator must remove the refrigerator door, "
+                    "locking device, or hinges before placing the refrigerator on the street for collection."
+                ),
+            },
+        }
+        gym_match = {
+            "score": 0.75,
+            "metadata": {
+                "code": "NYC Health Code",
+                "section": "165.01",
+                "section_title": "Swimming pools — general requirements",
+                "source_url": "https://rules.cityofnewyork.us/rule/nyc-health-code-article-165/#165.01",
+                "text": (
+                    "NYC Health Code §165.01\n\n"
+                    "No person shall operate a public swimming pool without a permit issued by the Department."
+                ),
+            },
+        }
+        with patch.object(cf, "_get_prompt", side_effect=_local_prompt):
+            result = cf.structure_response(QUERY, [gym_match, fridge_match])
+        for term in ["refrigerator", "131.13"]:
             self.assertNotIn(
-                term, self.summary.lower(),
-                f"Summary mentions '{term}' — not relevant to gym regulations"
+                term, result["summary"].lower(),
+                f"Model included '{term}' (refrigerator disposal) in gym summary — RELEVANCE rule not followed"
             )
 
     def test_condition_5_gym_definition_cited_when_retrieved(self):
