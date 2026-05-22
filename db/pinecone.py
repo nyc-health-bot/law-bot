@@ -1,26 +1,21 @@
 import requests
 import os
-from pathlib import Path
-from dotenv import load_dotenv
-import numpy as np
-from util import get, post, embed_fn
-
-# load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
+from db.http import embed_fn
 PINECONE_HOST = os.getenv("PINECONE_HOST")
 PINECONE_KEY = os.getenv("PINECONE_API_KEY")
 
 
 
 def get_index_stats():
-    resp = get(
-        url = f"{PINECONE_HOST}/describe_index_stats",
+    resp = requests.get(
+        url=f"{PINECONE_HOST}/describe_index_stats",
         headers={"Api-Key": os.getenv("PINECONE_API_KEY")},
     )
     print(resp.json())
 
 
 def clear_index():
-    resp = post(
+    resp = requests.post(
         url=f"{PINECONE_HOST}/vectors/delete",
         headers={"Api-Key": os.getenv("PINECONE_API_KEY"), "Content-Type": "application/json"},
         json={"deleteAll": True},
@@ -49,7 +44,7 @@ def upload_chunks(chunks: list[dict], batch_size: int = 100) -> None:
             ]
         }
 
-        resp = post(url=url, headers=headers, json=payload)
+        resp = requests.post(url=url, headers=headers, json=payload)
         if not resp.ok:
             print(f"Pinecone error {resp.status_code}: {resp.text}")
         resp.raise_for_status()
@@ -66,7 +61,7 @@ def query(query_text: str, max_sections: int = 6) -> list[dict]:
     """
     query_vector = embed_fn([query_text], task_type='RETRIEVAL_QUERY')[0]
 
-    pc_resp = post(
+    pc_resp = requests.post(
         url=f"{PINECONE_HOST}/query",
         headers={"Api-Key": PINECONE_KEY, "Content-Type": "application/json"},
         json={"vector": query_vector, "topK": 30, "includeMetadata": True},

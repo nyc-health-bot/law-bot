@@ -9,7 +9,7 @@ A semantic search tool for the NYC Health Code, NYC Admin Code, and NYS Sanitary
 ## Architecture
 
 ```
-Browser (ui/)  →  Google Cloud Function (backend/cloud_function.py)  →  Gemini + Pinecone
+Browser (ui/)  →  Google Cloud Function (api/cloud_function.py)  →  Gemini + Pinecone
 ```
 
 ### Query pipeline
@@ -25,22 +25,23 @@ Browser (ui/)  →  Google Cloud Function (backend/cloud_function.py)  →  Gemi
 ```
 law-bot/
 ├── ui/                        # Single-page frontend (HTML/JS/CSS)
-├── backend/
-│   ├── cloud_function.py      # Cloud Function entry point (production)
-│   ├── main.py                # Local dev equivalent (loads from .env)
+├── api/
+│   ├── cloud_function.py      # Cloud Function entry point — single api source
 │   ├── prompts/               # Prompt templates loaded at runtime
 │   ├── tests/
 │   └── deploy/                # GCP deployment scripts and config
-├── chunking/                  # Chunks scraped JSON and uploads to Pinecone
-├── scrapers/                  # Web scrapers for each legal code
-│   ├── nyc-health-code/
-│   ├── nyc-admin-code/
-│   └── nys-sanitary-code/
-├── scripts/
-│   └── test_pipeline.py       # Quick end-to-end pipeline test
-├── pinecone.py                # Pinecone client wrapper
-├── util.py                    # Shared utilities: embedding, HTTP with retry
-├── generate_section_data.py   # Generates ui/data/*.json section lookup files
+├── db/
+│   ├── pinecone.py            # Pinecone client (query, upload, clear)
+│   ├── http.py                # HTTP helpers and Gemini embedding client
+│   └── chunking/              # ETL pipeline: scraped JSON → Pinecone chunks
+├── data/
+│   ├── generate_section_data.py  # Generates ui/data/*.json section lookup files
+│   └── scrapers/                 # Web scrapers for each legal code
+│       ├── nyc-health-code/
+│       ├── nyc-admin-code/
+│       └── nys-sanitary-code/
+├── test/
+│   └── test_pipeline.py          # Quick end-to-end pipeline test
 └── docs/
     └── output-format.md       # Detailed spec for response format and UI behavior
 ```
@@ -65,7 +66,7 @@ pip install requests numpy python-dotenv google-generativeai
 cp .env.example .env
 
 # Run a test query
-python scripts/test_pipeline.py
+python test/test_pipeline.py
 ```
 
 ### Re-indexing
@@ -73,14 +74,14 @@ python scripts/test_pipeline.py
 Run these after modifying scrapers, chunking logic, or the raw data files:
 
 ```bash
-python3 -m chunking.main          # clears Pinecone index and re-uploads all chunks
-python3 generate_section_data.py  # regenerates ui/data/*.json section lookup files
+python3 -m db.chunking.main       # clears Pinecone index and re-uploads all chunks
+python3 data/generate_section_data.py  # regenerates ui/data/*.json section lookup files
 ```
 
 ### Deployment (Google Cloud Functions)
 
 ```bash
-cd backend/deploy
+cd api/deploy
 cp env.yaml.example env.yaml   # fill in real values
 bash deploy.sh                 # copies cloud_function.py → main.py and deploys
 ```
@@ -93,15 +94,15 @@ The deploy script targets the `nyc-health-law-bot` GCP project, region `us-east1
 
 | Code | Scraper | Chunker |
 |---|---|---|
-| NYC Health Code | `scrapers/nyc-health-code/` | `chunking/nyc_health_code.py` |
-| NYC Admin Code | `scrapers/nyc-admin-code/` | `chunking/nyc_admin.py` |
-| NYS Sanitary Code | `scrapers/nys-sanitary-code/` | `chunking/nys_sanitary.py` |
+| NYC Health Code | `data/scrapers/nyc-health-code/` | `db/chunking/nyc_health_code.py` |
+| NYC Admin Code | `data/scrapers/nyc-admin-code/` | `db/chunking/nyc_admin.py` |
+| NYS Sanitary Code | `data/scrapers/nys-sanitary-code/` | `db/chunking/nys_sanitary.py` |
 
 ---
 
 ## Environment variables
 
-Copy `backend/deploy/env.yaml.example` to set up. Required variables:
+Copy `api/deploy/env.yaml.example` to set up. Required variables:
 
 | Variable | Description |
 |---|---|

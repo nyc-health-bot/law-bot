@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Copy function source (main.py is generated — do not edit it directly; edit ../google_function.py)
-cp ../google_function.py main.py
+# Copy function source (main.py is generated — do not edit it directly; edit ../cloud_function.py)
+cp ../cloud_function.py main.py
 
 gcloud functions deploy law-bot \
   --gen2 \

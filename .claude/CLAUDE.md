@@ -1,11 +1,11 @@
 # law-bot
 
-A semantic search tool for NYC Health Code, NYC Admin Code, and NYS Sanitary Code. Users type a plain-English question; the backend rewrites it into legal keywords, retrieves relevant sections from Pinecone, and uses Gemini to produce a bulleted summary with inline §-citations and highlighted source text.
+A semantic search tool for NYC Health Code, NYC Admin Code, and NYS Sanitary Code. Users type a plain-English question; the api rewrites it into legal keywords, retrieves relevant sections from Pinecone, and uses Gemini to produce a bulleted summary with inline §-citations and highlighted source text.
 
 ## Architecture
 
 ```
-UI (ui/)  →  Cloud Function (middle/google_function.py)  →  Gemini + Pinecone
+UI (ui/)  →  Cloud Function (api/cloud_function.py)  →  Gemini + Pinecone
 ```
 
 **Query pipeline (in order):**
@@ -13,22 +13,18 @@ UI (ui/)  →  Cloud Function (middle/google_function.py)  →  Gemini + Pinecon
 2. `pinecone.query()` / `_pinecone_query()` — embeds keywords with `gemini-embedding-001` (`RETRIEVAL_QUERY` task), fetches topK=30 chunks, deduplicates to top 10 unique (code, section) pairs by best chunk score, threshold 0.5
 3. `structure_response()` — Gemini generates bulleted markdown summary with inline §-citations and per-source `relevant_passages` (gemini-2.5-flash-lite)
 
-**Two parallel versions of the backend:**
-- `middle/main.py` — local development; imports from `util.py` and `pinecone.py`
-- `middle/google_function.py` — self-contained Cloud Function; all dependencies inlined; this is what gets deployed
-
-Always keep both in sync when changing pipeline logic or prompts.
+**Single source of truth for the api:**
+- `api/cloud_function.py` — self-contained Cloud Function; all dependencies inlined; deployed to GCP and used for local testing via `test/test_pipeline.py`
 
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `middle/google_function.py` | Cloud Function entry point (`handle_request`). Edit this for production changes. |
-| `middle/main.py` | Local dev version of the same pipeline. |
-| `util.py` | `embed_fn()` with retry (429/503), `post()`/`get()` with proxy support for non-Codespace environments. |
-| `pinecone.py` | `upload_chunks()`, `query()`, `clear_index()`. |
-| `chunking/main.py` | Run as `python3 -m chunking.main` from repo root to re-index all codes. |
-| `generate_section_data.py` | Run as `python3 generate_section_data.py` from repo root. Generates `ui/data/*.json` (section number → full formatted text). Must re-run after scraper or formatter changes. |
+| `api/cloud_function.py` | Cloud Function entry point (`handle_request`). The single api source — edit this for all changes. |
+| `db/http.py` | HTTP `get`/`post` helpers with retry (429/503) and proxy support; `embed_fn()` for Gemini embeddings. Used by `db/pinecone.py`. |
+| `db/pinecone.py` | `upload_chunks()`, `query()`, `clear_index()`. |
+| `db/chunking/main.py` | Run as `python3 -m db.chunking.main` from repo root to re-index all codes. |
+| `data/generate_section_data.py` | Run as `python3 data/generate_section_data.py` from repo root. Generates `ui/data/*.json` (section number → full formatted text). Must re-run after scraper or formatter changes. |
 | `ui/index.html` | Frontend. Single page app. |
 | `ui/app.js` | All frontend logic: fetch, render, accordion cards, passage highlighting, §-link anchoring. |
 | `ui/style.css` | Styles. `[hidden] { display: none !important; }` is load-bearing — without it CSS flex/block overrides the HTML hidden attribute. |
@@ -37,12 +33,11 @@ Always keep both in sync when changing pipeline logic or prompts.
 ## Deployment
 
 ```bash
-cd middle/google_deploy
-cp ../google_function.py main.py
+cd api/deploy
 bash deploy.sh
 ```
 
-`env.yaml` contains real secrets — it is gitignored. Copy `env.yaml.example` to set up. After any change to `google_function.py`, re-run the deploy.
+`env.yaml` contains real secrets — it is gitignored. Copy `env.yaml.example` to set up. After any change to `cloud_function.py`, re-run the deploy.
 
 **Cloud Function:** `https://us-east1-nyc-health-law-bot.cloudfunctions.net/law-bot`  
 **GitHub Pages:** `https://mporter-dohmh.github.io/law-bot`  
@@ -54,9 +49,9 @@ Three codes are indexed in Pinecone:
 
 | Code | Scraper | Chunker | Section data key |
 |---|---|---|---|
-| NYC Health Code | `scraping/nyc-health-code/` | `chunking/nyc_health_code.py` | `NYC Health Code` |
-| NYC Admin Code | `scraping/nyc-admin-code/` | `chunking/nyc_admin.py` | `NYC Admin Code` |
-| NYS Sanitary Code | `scraping/nys-sanitary-code/` | `chunking/nys_sanitary.py` | `NYS Sanitary Code` |
+| NYC Health Code | `data/scrapers/nyc-health-code/` | `db/chunking/nyc_health_code.py` | `NYC Health Code` |
+| NYC Admin Code | `data/scrapers/nyc-admin-code/` | `db/chunking/nyc_admin.py` | `NYC Admin Code` |
+| NYS Sanitary Code | `data/scrapers/nys-sanitary-code/` | `db/chunking/nys_sanitary.py` | `NYS Sanitary Code` |
 
 NYS Sanitary Code Part 14 files (`part_14_*.json`) use a different structure: top-level `sections[]` instead of `subparts[].sections[]`. Both `nys_sanitary.py` and `generate_section_data.py` handle this with `_iter_sections()`.
 
@@ -119,19 +114,22 @@ Both `structure_question` and `structure_response` use `gemini-2.5-flash-lite` w
 
 **Re-index after scraper changes:**
 ```bash
-python3 -m chunking.main   # clears index and re-uploads everything
-python3 generate_section_data.py  # regenerate ui/data/*.json
+python3 -m db.chunking.main   # clears index and re-uploads everything
+python3 data/generate_section_data.py  # regenerate ui/data/*.json
 ```
 
 **Test the local pipeline:**
 ```bash
+python test/test_pipeline.py
+```
+
+**Or inline:**
+```bash
 python3 -c "
 from dotenv import load_dotenv; load_dotenv()
-from middle.main import structure_question, structure_response
-from pinecone import query
+from api.cloud_function import structure_question, structure_response, get_values
 user_q = 'your question here'
-matches = query(structure_question(user_q))
-result = structure_response(user_q, matches)
+result = structure_response(user_q, get_values(structure_question(user_q)))
 print(result['summary'])
 "
 ```
@@ -140,10 +138,8 @@ print(result['summary'])
 ```bash
 python3 -c "
 from dotenv import load_dotenv; load_dotenv()
-from middle.main import structure_question
-from pinecone import query
-matches = query(structure_question('your question'))
-for m in matches:
+from api.cloud_function import structure_question, get_values
+for m in get_values(structure_question('your question')):
     print(m['score'], m['metadata']['code'], m['metadata']['section'])
 "
 ```

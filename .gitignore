@@ -1,6 +1,9 @@
 # PyCharm
 .idea/
 
+# VS Code
+.vscode/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -17,5 +20,13 @@ build/
 .DS_Store
 Thumbs.db
 
+# Secrets — never commit real values
 .env
-middle/google_deploy/env.yaml
+env.yaml
+api/deploy/env.yaml
+
+# Generated deploy artifact — rebuilt by deploy.sh
+api/deploy/main.py
+
+# Claude Code local settings
+.claude/settings.local.json

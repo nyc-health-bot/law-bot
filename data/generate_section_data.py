@@ -1,12 +1,12 @@
 """
 Generates ui/data/{code}.json files mapping section number → full section text.
-Run from the repo root: python3 generate_section_data.py
+Run from the repo root: python data/generate_section_data.py
 """
 import json
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "ui" / "data"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -84,7 +84,7 @@ def full_text(title: str, body: str) -> str:
 # --- NYC Health Code + Rules of the City of New York ---
 nyc_health = {}
 nyc_rules = {}
-for f in sorted((ROOT / "scraping/nyc-health-code/data").glob("*.json")):
+for f in sorted((ROOT / "data/scrapers/nyc-health-code/data").glob("*.json")):
     data = json.loads(f.read_text(encoding="utf-8", errors="replace"))
     target = nyc_rules if data.get("type") == "chapter" else nyc_health
     for section in data.get("sections", []):
@@ -107,7 +107,7 @@ print(f"Rules of the City of New York: {len(nyc_rules)} sections")
 
 # --- NYC Admin Code ---
 nyc_admin = {}
-for f in sorted((ROOT / "scraping/nyc-admin-code/data").glob("*.json")):
+for f in sorted((ROOT / "data/scrapers/nyc-admin-code/data").glob("*.json")):
     data = json.loads(f.read_text(encoding="utf-8", errors="replace"))
     for section in data.get("sections", []):
         sec_num = section.get("section", "").strip()
@@ -131,7 +131,7 @@ def _iter_nys_sections(data):
         yield section
 
 nys_sanitary = {}
-for f in sorted((ROOT / "scraping/nys-sanitary-code/data").glob("*.json")):
+for f in sorted((ROOT / "data/scrapers/nys-sanitary-code/data").glob("*.json")):
     data = json.loads(f.read_text(encoding="utf-8", errors="replace"))
     for section in _iter_nys_sections(data):
         sec_num = section.get("section", "").strip()
