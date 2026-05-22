@@ -273,10 +273,11 @@ def _build_sources(matches: list[dict]) -> list[dict]:
 
 def _gemini_generate_streamed(payload: dict) -> dict:
     """Calls Gemini via streaming SSE and assembles the full response dict.
-    Use instead of _gemini_generate when the prompt is large and read timeout is a risk."""
+    Use instead of _gemini_generate when the prompt is large and read timeout is a risk.
+    timeout tuple: (connect_seconds, read_seconds) — read applies per chunk."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
     for attempt in range(5):
-        resp = requests.post(url, json=payload, timeout=60, stream=True)
+        resp = requests.post(url, json=payload, timeout=(30, 180), stream=True)
         if resp.status_code in (429, 503):
             resp.close()
             time.sleep(2 ** attempt)

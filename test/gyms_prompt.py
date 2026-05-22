@@ -34,7 +34,7 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "api" / "prompts"
 def _local_prompt(name: str) -> str:
     return (PROMPTS_DIR / name).read_text(encoding="utf-8")
 
-QUERY = "what are environmental regulations for gyms"
+QUERY = "what are regulations for gyms"
 
 
 class TestGymsPrompt(unittest.TestCase):
@@ -154,6 +154,47 @@ class TestGymsPrompt(unittest.TestCase):
         self.assertTrue(
             bool(definition_re.search(bullet_lines[0])) or "means " in first_bullet or "shall mean " in first_bullet,
             f"First bullet is not a definition even though sources contain one:\n{bullet_lines[0]}"
+        )
+
+
+    def test_condition_4_irrelevant_sources_excluded(self):
+        """Issue: refrigerator disposal regulations appeared in summary for gym query.
+        Sources clearly unrelated to gyms (e.g. appliance disposal) must not be summarized."""
+        irrelevant_terms = ["refrigerator"]
+        for term in irrelevant_terms:
+            self.assertNotIn(
+                term, self.summary.lower(),
+                f"Summary mentions '{term}' — not relevant to gym regulations"
+            )
+
+    def test_condition_5_gym_definition_cited_when_retrieved(self):
+        """Issue: no definition of 'gym'/'health studio'/'gymnasium' appeared even when a
+        retrieved source contains the definition. When sources define what constitutes a gym
+        or fitness establishment, that definition must appear in the summary."""
+        gym_terms = {"health studio", "health club", "gymnasium", "physical fitness",
+                     "fitness center", "exercise equipment", "martial arts"}
+        definition_re = re.compile(
+            r'(?:^|[.!?]\s+)'
+            r'(?:"[^"]+"|[A-Z][^.!?]{0,60})'
+            r'\s+(?:means|shall mean|is defined as)\s+',
+            re.MULTILINE,
+        )
+        source_defines_gym = any(
+            bool(definition_re.search(c["text"])) and
+            any(term in c["text"].lower() for term in gym_terms)
+            for c in self.citations
+        )
+        if not source_defines_gym:
+            self.skipTest("No retrieved source defines a gym/fitness establishment — skip")
+        bullet_lines = [l.strip() for l in self.summary.splitlines() if l.strip().startswith("- ")]
+        has_gym_definition = any(
+            any(term in l.lower() for term in gym_terms) and
+            ("means" in l.lower() or "shall mean" in l.lower() or "is defined as" in l.lower())
+            for l in bullet_lines
+        )
+        self.assertTrue(
+            has_gym_definition,
+            "A source defines a gym/fitness establishment but the definition is missing from the summary"
         )
 
 
