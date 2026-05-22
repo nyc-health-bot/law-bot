@@ -5,13 +5,23 @@ Question: {user_query}
 Sources:
 {context_str}
 
-Return a JSON object with two keys:
-1. "summary": ALWAYS format the answer as a markdown bulleted list — never write prose paragraphs. Each item must start with "- ". If a single sentence helps introduce the bullets, include it before the list, but the rules themselves must be bullets. Each bullet should be a distinct rule or requirement. End each bullet with the section identifier(s) it draws from in parentheses, e.g. "(§81.07)" or "(§81.07, §19.05)". Use ONLY the §XX.XX identifiers that appear in the source titles above (e.g. §81.07, §17-505). Do not cite: the bracketed index numbers [0], [1], [2]; section numbers cross-referenced within body text; or subsection qualifiers like (a), (aa), (1) appended to a section number. Every §-citation must match a source title exactly. If the sources do not answer the question, write a single bullet saying so.
+Return a JSON object with exactly two keys: "summary" and "citations".
 
-	Keep bullets short and accurate: Prefer a single concise sentence per bullet that is faithful to the source text. When a verbatim quote is required (e.g., for a definition or a precise requirement), include only the minimal set of complete sentence(s) from the source needed to state the rule — do not add explanatory or contextual filler. If a rule spans multiple required sentences, include them but still prefer brevity. Avoid long lists or paragraph-length bullets.
-	 Special rule for Definitions: If any source is a statutory "Definitions" section or contains definitional paragraphs, include those definitions verbatim as bullets in the `summary`. For each definition:
-	- Add a separate bullet that contains the exact verbatim definition text (one or more complete sentences copied only from the source), followed by the section identifier in parentheses. Do NOT append an explicit markdown link in the summary; use only the parenthetical citation (for example: "(§81.07)"). The UI will convert §-citations into links that open the full section with the relevant text highlighted. Example bullet:
-		- "Food establishment: means ... full sentence(s) here." (§81.07)
-	 - Do NOT paraphrase definitions; include only verbatim text. If a Definitions section lists many short definitions, include only those definitions that are directly relevant to the user's question. If none are relevant, do not include them.
-1. "summary": ALWAYS format the answer as a markdown bulleted list — never write prose paragraphs. Each item must start with "- ". If a single sentence helps introduce the bullets, include it before the list, but the rules themselves must be bullets. Each bullet should be a distinct rule or requirement. If any sources contain definitions relevant to the question (e.g. "X means...", "X is defined as..."), list those as the FIRST bullet(s) before all other bullets. End each bullet with the section identifier(s) it draws from in parentheses, copied exactly from the source titles above, e.g. "(§81.07)", "(§7-12)", or "(§81.07, §7-12)". Section numbers may use decimals (§81.07) or hyphens (§7-12) — cite them exactly as shown in the source titles. Cite ONLY identifiers that appear as source titles above. Do not cite: the bracketed index numbers [0], [1], [2]; section numbers mentioned only within body text; or subsection qualifiers like (a), (aa), (1) appended to a section number. Every §-citation must match a source title exactly. If the sources do not answer the question, write a single bullet saying so.
-2. "citations": an array with exactly {num_sources} objects, one per source in order. Each object must have "index" (integer) and "relevant_passages" (a list of verbatim quotes copied ONLY from the TEXT of the source with that exact index — do not quote text from any other source — include any text from this source that you quoted directly in the summary — each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant).
+"summary" rules (follow ALL of these):
+1. ALWAYS a markdown bulleted list — never prose paragraphs. Every item starts with "- ".
+2. One optional intro sentence before the list (no §-citation in the intro).
+3. DEFINITIONS FIRST: If any source defines a term relevant to the question, that definition must be the first bullet(s) before all other bullets.
+4. BULLET LENGTH — each bullet may contain at most 3 sentences. If a provision has more than 3 distinct requirements, split them across multiple bullets (each citing the same §-identifier). Never write a bullet with 4 or more sentences.
+   BAD (four requirements crammed into one bullet):
+   - Defibrillators are required in gyms with 250+ members. They must be readily accessible. Written notice must be provided. Staff must be trained annually. (§17-188)
+   GOOD (split after 3 sentences, or one requirement per bullet):
+   - Defibrillators are required in establishments for physical fitness with at least 250 members, including health studios, gymnasiums, and martial arts schools. They must be readily accessible for use during medical emergencies. (§17-188)
+   - Written notice must be provided indicating the availability of defibrillators and how to obtain training. (§17-188)
+5. Every bullet ends with a §-citation in parentheses. Copy the identifier exactly from the source titles, e.g. "(§81.07)" or "(§17-188)". Multiple bullets may share the same §-citation.
+6. Cite ONLY identifiers that appear as source titles above. Do NOT cite: bracketed index numbers [0], [1], [2]; section numbers mentioned only within body text; subsection qualifiers like (a), (aa), (1).
+7. Every §-citation must exactly match a source title.
+8. If the sources do not answer the question, write a single bullet saying so (no §-citation needed).
+
+"citations": an array with exactly {num_sources} objects, one per source in order. Each object must have:
+- "index" (integer, 0-based)
+- "relevant_passages" (list of verbatim quotes copied ONLY from that source's TEXT — include any text you quoted in the summary — each quote must be one or more complete sentences, never cut off mid-word or mid-sentence — empty list if none are relevant)

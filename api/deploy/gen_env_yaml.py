@@ -22,9 +22,12 @@ for raw in env_path.read_text(encoding="utf-8").splitlines():
     line = raw.strip()
     if not line or line.startswith("#"):
         continue
-    if "=" not in line:
+    if "=" in line:
+        key, _, value = line.partition("=")
+    elif ": " in line:
+        key, _, value = line.partition(": ")
+    else:
         continue
-    key, _, value = line.partition("=")
     value = value.strip().strip('"').strip("'")
     lines.append(f'{key.strip()}: "{value}"')
 

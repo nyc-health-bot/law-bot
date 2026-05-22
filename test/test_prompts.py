@@ -9,17 +9,21 @@ Run from repo root:
     python test/test_prompts.py
     python -m pytest test/test_prompts.py -v
 """
-from dotenv import load_dotenv
-load_dotenv()
-
+import os
 import re
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from test._env import load_env
+load_env()
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import api.cloud_function as cf
+
+if not os.environ.get("GOOGLE_API_KEY"):
+    raise unittest.SkipTest("GOOGLE_API_KEY not set — copy .env.example to .env and fill in real values")
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "api" / "prompts"
 
@@ -162,7 +166,7 @@ class TestStructureResponse(unittest.TestCase):
 
     def test_section_citations_only_from_provided_sources(self):
         """Every §XX.XX in the summary must be one of the retrieved source sections."""
-        cited = set(re.findall(r"§([\w.\-]+)", self.summary))
+        cited = {s.rstrip('.,;:') for s in re.findall(r"§([\w.\-]+)", self.summary)}
         unknown = cited - SAMPLE_SECTIONS
         self.assertEqual(unknown, set(),
             f"Summary cites unknown sections §{unknown} not in provided sources (hallucinated)")

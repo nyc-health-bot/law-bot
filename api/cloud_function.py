@@ -185,21 +185,63 @@ def _cached_pinecone_query(query_text: str) -> list[dict]:
 def _gemini_generate(payload: dict) -> dict:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
     for attempt in range(5):
-        resp = requests.post(url, json=payload, timeout=60)
+        resp = requests.post(url, json=payload, timeout=120)
         if resp.status_code in (429, 503):
             time.sleep(2 ** attempt)
             continue
-        resp.raise_for_status()
+        if not resp.ok:
+            raise requests.HTTPError(
+                f"{resp.status_code} {resp.reason}: {resp.text}", response=resp
+            )
         return resp.json()
     raise RuntimeError("Gemini request failed after 5 retries")
 
 
+def _extract_section(raw: str) -> str:
+    """Strip trailing punctuation from a matched section number e.g. '165.47.' → '165.47'."""
+    return raw.rstrip('.,;:')
+
+
 def _filter_citations(summary: str, valid_sections: set) -> str:
-    """Strip §-citations from summary that have no corresponding retrieved source."""
-    def clean(m):
-        kept = [s for s in re.findall(r'§([\w.\-]+)', m.group(0)) if s in valid_sections]
+    """Strip §-citations from summary that have no corresponding retrieved source.
+    Handles both parenthetical citations (§XX.XX) and inline bare §XX.XX references."""
+    # Pass 1 — clean parenthetical citation groups like (§81.07) or (§81.07, §17-188)
+    def clean_group(m):
+        kept = [_extract_section(s) for s in re.findall(r'§([\w.\-]+)', m.group(0))
+                if _extract_section(s) in valid_sections]
         return '(' + ', '.join(f'§{s}' for s in kept) + ')' if kept else ''
-    return re.sub(r'\((?:§[\w.\-]+(?:,\s*)?)+\)', clean, summary).strip()
+    result = re.sub(r'\((?:§[\w.\-]+(?:,\s*)?)+\)', clean_group, summary)
+
+    # Pass 2 — remove inline bare §-citations not in valid_sections (body-text cross-refs)
+    def clean_inline(m):
+        section = _extract_section(m.group(1))
+        return f'§{section}' if section in valid_sections else ''
+    result = re.sub(r'§([\w.\-]+)', clean_inline, result)
+
+    return result.strip()
+
+
+def _split_long_bullets(summary: str) -> str:
+    """Split any bullet with >3 sentences into multiple bullets, each keeping the same §-citation."""
+    citation_re = re.compile(r'\s*(\((?:§[\w.\-]+(?:,\s*)?)+\))\s*$')
+    sentence_split_re = re.compile(r'(?<=[.!?])\s+(?=[A-Z])')
+    result = []
+    for line in summary.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            result.append(line)
+            continue
+        m = citation_re.search(stripped)
+        citation = m.group(1) if m else ""
+        body = citation_re.sub('', stripped[2:]).strip()
+        sentences = sentence_split_re.split(body)
+        if len(sentences) <= 3:
+            result.append(line)
+            continue
+        for i in range(0, len(sentences), 3):
+            chunk = " ".join(sentences[i:i + 3])
+            result.append(f"- {chunk} {citation}".strip() if citation else f"- {chunk}")
+    return "\n".join(result)
 
 
 def _build_sources(matches: list[dict]) -> list[dict]:
@@ -227,6 +269,35 @@ def _build_sources(matches: list[dict]) -> list[dict]:
          )}
         for entry in seen.values()
     ]
+
+
+def _gemini_generate_streamed(payload: dict) -> dict:
+    """Calls Gemini via streaming SSE and assembles the full response dict.
+    Use instead of _gemini_generate when the prompt is large and read timeout is a risk."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+    for attempt in range(5):
+        resp = requests.post(url, json=payload, timeout=60, stream=True)
+        if resp.status_code in (429, 503):
+            resp.close()
+            time.sleep(2 ** attempt)
+            continue
+        resp.raise_for_status()
+        parts = []
+        finish_reason = None
+        for line in resp.iter_lines():
+            if line and line.startswith(b"data: "):
+                try:
+                    data = json.loads(line[6:])
+                    candidate = data["candidates"][0]
+                    text = candidate["content"]["parts"][0].get("text", "")
+                    if text:
+                        parts.append(text)
+                    if candidate.get("finishReason"):
+                        finish_reason = candidate["finishReason"]
+                except (KeyError, IndexError, json.JSONDecodeError):
+                    continue
+        return {"candidates": [{"content": {"parts": [{"text": "".join(parts)}]}, "finishReason": finish_reason}]}
+    raise RuntimeError("Gemini streaming request failed after 5 retries")
 
 
 def _gemini_stream(payload: dict):
@@ -390,25 +461,27 @@ def structure_response(user_query: str, pinecone_matches: list[dict]) -> dict:
         },
     }
 
-    # Call Gemini and measure time to help debug slow responses
+    # Call Gemini via streaming to avoid read-timeout on large prompts
     start = time.time()
     try:
-        out = _gemini_generate(payload)
+        out = _gemini_generate_streamed(payload)
     except Exception as e:
-        # Return concise error summary so the frontend can present it
         return {"summary": f"- I couldn't generate a response due to an upstream error: {str(e)}", "citations": []}
     duration = time.time() - start
 
     gemini_out = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
 
     gemini_out['summary'] = normalize_text(gemini_out.get('summary', ''))
+    # Model sometimes omits \n between bullets — insert before any "- " following a citation group
+    gemini_out['summary'] = re.sub(r'\)\s+-\s+', ')\n- ', gemini_out['summary'])
+    gemini_out['summary'] = _split_long_bullets(gemini_out['summary'])
     if duration > 3.0:
         note = f"Note: response generation took {duration:.1f}s."
         gemini_out['summary'] = note + "\n" + gemini_out['summary']
 
     passage_map = {item["index"]: item.get("relevant_passages", []) for item in gemini_out["citations"]}
     summary = _filter_citations(gemini_out["summary"], set(section_numbers))
-    cited_sections = set(re.findall(r'§([\w.\-]+)',summary))
+    cited_sections = {_extract_section(s) for s in re.findall(r'§([\w.\-]+)', summary)}
 
     citations = [
         {
@@ -540,7 +613,7 @@ def handle_request(request):
                 return
 
             filtered = _filter_citations(raw_summary, valid_sections)
-            cited_sections = list(re.findall(r'§([\w.\-]+)',filtered))
+            cited_sections = [_extract_section(s) for s in re.findall(r'§([\w.\-]+)', filtered)]
             yield _sse({"type": "done", "summary": filtered, "cited_sections": cited_sections})
 
             try:

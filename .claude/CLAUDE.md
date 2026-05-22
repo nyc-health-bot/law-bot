@@ -127,9 +127,9 @@ python test/test_pipeline.py
 ```bash
 python3 -c "
 from dotenv import load_dotenv; load_dotenv()
-from api.cloud_function import structure_question, structure_response, get_values
+from api.cloud_function import structure_question, structure_response, _pinecone_query
 user_q = 'your question here'
-result = structure_response(user_q, get_values(structure_question(user_q)))
+result = structure_response(user_q, _pinecone_query(structure_question(user_q)))
 print(result['summary'])
 "
 ```
@@ -138,8 +138,8 @@ print(result['summary'])
 ```bash
 python3 -c "
 from dotenv import load_dotenv; load_dotenv()
-from api.cloud_function import structure_question, get_values
-for m in get_values(structure_question('your question')):
+from api.cloud_function import structure_question, _pinecone_query
+for m in _pinecone_query(structure_question('your question')):
     print(m['score'], m['metadata']['code'], m['metadata']['section'])
 "
 ```

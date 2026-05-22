@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting...</title>
+  <script>
+    // Preserve ?token= and any other query params when redirecting to the app
+    window.location.replace("ui/index.html" + window.location.search + window.location.hash);
+  </script>
+</head>
+<body>
+  <a href="ui/index.html">Click here if not redirected automatically.</a>
+</body>
+</html>

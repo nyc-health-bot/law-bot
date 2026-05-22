@@ -5,7 +5,7 @@ REM Add gcloud to PATH
 set PATH=C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin;%PATH%
 
 REM Generate env.yaml from repo-root .env (do not edit env.yaml directly)
-python gen_env_yaml.py
+python "%~dp0gen_env_yaml.py"
 
 REM Copy function source
 copy /Y ..\cloud_function.py main.py
