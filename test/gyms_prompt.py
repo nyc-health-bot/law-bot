@@ -173,19 +173,32 @@ class TestGymsPrompt(unittest.TestCase):
         """Issue: refrigerator disposal regulations appeared in summary for gym query.
         Observed: '- Every person who discards a refrigerator must remove the refrigerator door,
         locking device, or hinges before placing the refrigerator on the street for collection. (§131.13)'
-        This test always injects §131.13 alongside a real gym source so the RELEVANCE prompt
-        rule is exercised regardless of what Pinecone returned in this run."""
+        Root cause: §131.13 is a mixed-content chunk — subsection (b) is about ventilation
+        (relevant to gyms) so the chunk scores into the top-30, but subsection (c) is about
+        refrigerator disposal (not relevant). The model must skip the refrigerator subsection
+        even when summarizing the ventilation subsection from the same source."""
         fridge_match = {
             "score": 0.70,
             "metadata": {
                 "code": "NYC Health Code",
                 "section": "131.13",
-                "section_title": "Discarding refrigerators",
+                "section_title": "Control of unsafe conditions",
                 "source_url": "https://rules.cityofnewyork.us/rule/nyc-health-code-article-131/#131.13",
                 "text": (
                     "NYC Health Code §131.13\n\n"
-                    "Every person who discards a refrigerator must remove the refrigerator door, "
-                    "locking device, or hinges before placing the refrigerator on the street for collection."
+                    "Control of unsafe conditions\n\n"
+                    "(a) Contaminants. When activities conducted within a building result in the production of "
+                    "contaminants that the Department determines are harmful to public health, the Department "
+                    "may order the owner or person in control of the building to take such measures that the "
+                    "Department determines are necessary to eliminate or reduce such conditions so that they are "
+                    "no longer harmful to the public health.\n"
+                    "(b) Ventilation. When required by the Department mechanical ventilating systems, devices "
+                    "for the control of dust, gases, vapors and fumes, abatement devices, or other means of "
+                    "reducing conditions dangerous to health shall be installed and maintained in a building or "
+                    "surrounding premises by persons in control of such building or premises.\n"
+                    "(c) Discarding refrigerators. Every person who discards a refrigerator shall remove the "
+                    "refrigerator door, locking device or hinges before placing the refrigerator on the street "
+                    "for collection by DOS or other waste removal service."
                 ),
             },
         }
@@ -204,11 +217,12 @@ class TestGymsPrompt(unittest.TestCase):
         }
         with patch.object(cf, "_get_prompt", side_effect=_local_prompt):
             result = cf.structure_response(QUERY, [gym_match, fridge_match])
-        for term in ["refrigerator", "131.13"]:
-            self.assertNotIn(
-                term, result["summary"].lower(),
-                f"Model included '{term}' (refrigerator disposal) in gym summary — RELEVANCE rule not followed"
-            )
+        # §131.13 may legitimately appear (cited for its ventilation/contaminant subsections)
+        # but the refrigerator disposal content must never appear
+        self.assertNotIn(
+            "refrigerator", result["summary"].lower(),
+            "Model included refrigerator disposal in gym summary — RELEVANCE rule not followed"
+        )
 
     def test_condition_5_gym_definition_cited_when_retrieved(self):
         """Issue: no definition of 'gym'/'health studio'/'gymnasium' appeared even when a
@@ -248,6 +262,144 @@ def _get_matches():
     """
     structured = cf.structure_question(QUERY)
     return cf._pinecone_query(structured)
+
+
+# ---------------------------------------------------------------------------
+# §165.63 passage highlighting
+# ---------------------------------------------------------------------------
+
+def _sauna_chunk_text():
+    """Return the chunk text for §165.63 as the chunker would produce it."""
+    import json as _json
+    article_path = Path(__file__).resolve().parent.parent / "data" / "scrapers" / "nyc-health-code" / "data" / "article_165.json"
+    data = _json.loads(article_path.read_text(encoding="utf-8"))
+    for sec in data.get("sections", []):
+        if sec.get("section") == "165.63":
+            body = sec.get("text", "").strip()
+            # Replicate _clean_body: remove bare digit lines; drop blank lines mid-sentence
+            lines = body.split("\n")
+            lines = [l for l in lines if not re.match(r"^\s*\d+\s*$", l)]
+            result = []
+            for line in lines:
+                if not line.strip():
+                    last = next((l for l in reversed(result) if l.strip()), "")
+                    if last and not re.search(r"[.!?:;]\s*$", last.rstrip()):
+                        continue
+                result.append(line)
+            cleaned = "\n".join(result)
+            return f"Sauna and Steam Rooms\n\n{cleaned}"
+    raise RuntimeError("§165.63 not found in article_165.json")
+
+
+def _ui_data_text(section: str) -> str:
+    ui_path = Path(__file__).resolve().parent.parent / "ui" / "data" / "nyc-health-code.json"
+    import json as _json
+    data = _json.loads(ui_path.read_text(encoding="utf-8"))
+    text = data.get(section)
+    if text is None:
+        raise RuntimeError(f"§{section} not found in ui/data/nyc-health-code.json")
+    return text
+
+
+SAUNA_MATCH = {
+    "score": 0.79,
+    "metadata": {
+        "code": "NYC Health Code",
+        "section": "165.63",
+        "section_title": "Sauna and Steam Rooms",
+        "source_url": "https://rules.cityofnewyork.us/rule/nyc-health-code-article-165/#165.63",
+        "text": _sauna_chunk_text(),
+    },
+}
+
+
+class TestSaunaPassagesDataFormat(unittest.TestCase):
+    """Deterministic checks that §165.63 chunk text is compatible with ui/data.
+
+    These tests require no API key — they verify the data format only.
+    If any of these fail the highlighting can never work regardless of what the
+    model returns.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.chunk_text = SAUNA_MATCH["metadata"]["text"]
+        # passage_text = chunk_text after stripping first paragraph (section title)
+        cls.passage_text = cls.chunk_text.split("\n\n", 1)[1] if "\n\n" in cls.chunk_text else cls.chunk_text
+        cls.full_text = _ui_data_text("165.63")
+        cls.norm_full = re.sub(r"\s+", " ", cls.full_text).strip()
+
+    def _norm(self, s):
+        return re.sub(r"\s+", " ", s).strip()
+
+    def test_passage_text_sentences_findable_in_ui_data(self):
+        """Every complete sentence from passage_text must be findable in ui/data after
+        whitespace normalisation — the same transform JS findNormalized applies."""
+        # Split passage_text into sentences at subsection boundaries
+        sentence_re = re.compile(r"(?<=\.)\s+(?=\()")
+        sentences = [s.strip() for s in sentence_re.split(self.passage_text) if s.strip()]
+        missing = []
+        for s in sentences:
+            if len(s) < 20:
+                continue  # skip very short fragments
+            if self._norm(s).lower() not in self.norm_full.lower():
+                missing.append(s)
+        self.assertEqual(
+            missing, [],
+            "These chunk sentences cannot be found in ui/data after whitespace normalisation "
+            "(highlighting will fail for them):\n" + "\n".join(repr(s[:120]) for s in missing)
+        )
+
+    def test_ui_data_has_sauna_section(self):
+        """ui/data/nyc-health-code.json must have a '165.63' key."""
+        self.assertTrue(self.full_text, "§165.63 is empty or missing in ui/data")
+
+    def test_passage_text_starts_with_body_not_title(self):
+        """passage_text must NOT start with 'Sauna and Steam Rooms' — the title
+        should have been stripped so the model quotes body text only."""
+        self.assertFalse(
+            self.passage_text.startswith("Sauna"),
+            f"passage_text unexpectedly starts with section title: {self.passage_text[:80]!r}"
+        )
+
+
+class TestSaunaPassagesIntegration(unittest.TestCase):
+    """Integration test: _get_passages for §165.63 returns passages that are
+    findable in the full ui/data section text.
+
+    Requires GOOGLE_API_KEY — skipped otherwise.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.environ.get("GOOGLE_API_KEY"):
+            raise unittest.SkipTest("GOOGLE_API_KEY not set — skipping integration test")
+        with patch.object(cf, "_get_prompt", side_effect=_local_prompt):
+            cls.sources = cf._build_sources([SAUNA_MATCH])
+            cls.passages = cf._get_passages("what are regulations for gyms", cls.sources)
+        cls.full_text = _ui_data_text("165.63")
+        cls.norm_full = re.sub(r"\s+", " ", cls.full_text).strip()
+
+    def _norm(self, s):
+        return re.sub(r"\s+", " ", s).strip()
+
+    def test_returns_passages_for_sauna_source(self):
+        """_get_passages must return at least one passage for §165.63."""
+        self.assertIn(0, self.passages, "_get_passages returned no entry for index 0 (§165.63)")
+        self.assertGreater(
+            len(self.passages[0]), 0,
+            "_get_passages returned empty relevant_passages for §165.63"
+        )
+
+    def test_passages_findable_in_ui_data(self):
+        """Every returned passage must be findable in ui/data after whitespace
+        normalisation — the same transform JS findNormalized applies."""
+        for p in self.passages.get(0, []):
+            p_norm = self._norm(p).lower()
+            self.assertIn(
+                p_norm, self.norm_full.lower(),
+                f"Passage not findable in ui/data after whitespace normalisation:\n{p!r}"
+            )
 
 
 if __name__ == "__main__":

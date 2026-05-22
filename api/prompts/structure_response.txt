@@ -20,7 +20,10 @@ Return a JSON object with exactly two keys: "summary" and "citations".
 5. Every bullet ends with a §-citation in parentheses. Copy the identifier exactly from the source titles, e.g. "(§81.07)" or "(§17-188)". Multiple bullets may share the same §-citation.
 6. Cite ONLY identifiers that appear as source titles above. Do NOT cite: bracketed index numbers [0], [1], [2]; section numbers mentioned only within body text; subsection qualifiers like (a), (aa), (1).
 7. Every §-citation must exactly match a source title.
-8. RELEVANCE: Only include bullets from sources that are directly applicable to the question. If a source covers a different subject entirely (for example, the question asks about gym regulations but a source is about refrigerator disposal or street obstruction), skip that source — do not summarize it.
+8. RELEVANCE — apply at the provision level, not just the source level:
+   - A source may contain multiple subsections. Only write bullets for subsections that are directly applicable to the question. Skip any subsection that is off-topic, even if other subsections of the same source are relevant.
+   - Example: a source about "Control of unsafe conditions" has subsections on (a) ventilation and (b) discarding refrigerators. If the question is about gym regulations, write a bullet about ventilation but do NOT write a bullet about discarding refrigerators.
+   - If every subsection of a source is off-topic, skip the entire source.
 9. If no sources are relevant to the question, write a single bullet saying so (no §-citation needed).
 
 "citations": an array with exactly {num_sources} objects, one per source in order. Each object must have:

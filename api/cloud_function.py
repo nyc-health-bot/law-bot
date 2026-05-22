@@ -353,7 +353,7 @@ def _get_passages(user_query: str, sources: list[dict]) -> dict:
             },
         },
     }
-    out = _gemini_generate(payload)
+    out = _gemini_generate_streamed(payload)
     items = json.loads(out["candidates"][0]["content"]["parts"][0]["text"])
     return {item["index"]: item.get("relevant_passages", []) for item in items}
 
@@ -623,7 +623,7 @@ def handle_request(request):
             yield _sse({"type": "done", "summary": filtered, "cited_sections": cited_sections})
 
             try:
-                passages = passages_future.result(timeout=30)
+                passages = passages_future.result(timeout=60)
             except Exception:
                 passages = {}
             yield _sse({"type": "passages", "passages": passages})
