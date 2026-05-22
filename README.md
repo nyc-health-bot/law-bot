@@ -82,8 +82,7 @@ python3 data/generate_section_data.py  # regenerates ui/data/*.json section look
 
 ```bash
 cd api/deploy
-cp env.yaml.example env.yaml   # fill in real values
-bash deploy.sh                 # copies cloud_function.py → main.py and deploys
+bash deploy.sh   # generates env.yaml from repo-root .env, then deploys
 ```
 
 The deploy script targets the `nyc-health-law-bot` GCP project, region `us-east1`. Update `deploy.sh` if you're deploying to a different project.
@@ -102,7 +101,7 @@ The deploy script targets the `nyc-health-law-bot` GCP project, region `us-east1
 
 ## Environment variables
 
-Copy `api/deploy/env.yaml.example` to set up. Required variables:
+Copy `.env.example` to `.env` and fill in real values. `deploy.sh` generates `api/deploy/env.yaml` from it automatically. Required variables:
 
 | Variable | Description |
 |---|---|

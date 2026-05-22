@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Generate env.yaml from repo-root .env (do not edit env.yaml directly)
+python3 gen_env_yaml.py
+
 # Copy function source (main.py is generated — do not edit it directly; edit ../cloud_function.py)
 cp ../cloud_function.py main.py
 
