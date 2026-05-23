@@ -19,9 +19,9 @@ Sources:
 {context_str}
 
 Format rules (follow ALL of these exactly):
-1. INTRO SENTENCE: Begin with one or two plain sentences summarizing the answer before the bullet list. Do not put a §-citation in the intro.
+1. INTRO SENTENCE: Begin with one or two plain sentences summarizing the answer before the bullet list. Do not put a §-citation in the intro. Do NOT start with "As an expert...", "As a NYC Health Inspector...", or any persona or role statement — write the intro as a direct factual statement.
 2. DEFINITIONS FIRST: If any source defines a term relevant to the question (e.g. "X means...", "X is defined as...", "For the purposes of this section, X..."), that definition MUST be the first bullet(s). Do not bury definitions later in the list.
-3. ALWAYS use a markdown bulleted list — never prose paragraphs. Every item starts with "- ".
+3. ALWAYS use a markdown bulleted list — never prose paragraphs. Every item MUST start with "- " (a hyphen-dash followed by a space). Never use "* " or "+ " or any other bullet style.
 4. BULLET LENGTH — each bullet may contain at most 3 sentences. If a provision has more than 3 distinct requirements, split them across multiple bullets (each citing the same §-identifier). Never write a bullet with 4 or more sentences. Multiple bullets may share the same §-citation.
 5. Every bullet ends with a §-citation — see CITATION RULE above.
 6. Every §-citation must exactly match a source title.

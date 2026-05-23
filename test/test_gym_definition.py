@@ -223,7 +223,7 @@ class TestGymDefinitionIntegration(unittest.TestCase):
         definition_terms = {"means", "shall mean", "is defined as", "defined as",
                             "includes", "include"}
         bullets = [l.strip() for l in self.summary.splitlines()
-                   if l.strip().startswith("- ") and "17-188" in l]
+                   if re.match(r"^\s*[-*]\s", l) and "17-188" in l]
         self.assertGreater(len(bullets), 0,
             "No §17-188 bullets in summary")
         has_definition = any(

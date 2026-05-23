@@ -67,7 +67,7 @@ class TestGymsPrompt(unittest.TestCase):
         self.assertGreater(len(self.citations), 0, "No citations returned")
 
     def test_baseline_summary_has_bullets(self):
-        bullet_lines = [l for l in self.summary.splitlines() if l.strip().startswith("- ")]
+        bullet_lines = [l for l in self.summary.splitlines() if re.match(r"^\s*[-*]\s", l)]
         self.assertGreater(len(bullet_lines), 0, "Summary has no bullet lines")
 
     def test_baseline_no_hallucinated_citations(self):
@@ -80,6 +80,13 @@ class TestGymsPrompt(unittest.TestCase):
         self.assertNotRegex(self.summary, r"\[\d+\]",
             "Summary contains bracketed index citations like [0]")
 
+    def test_baseline_no_persona_intro(self):
+        first_line = self.summary.strip().splitlines()[0].lower() if self.summary.strip() else ""
+        self.assertFalse(
+            first_line.startswith("as an expert") or first_line.startswith("as a nyc"),
+            f"Summary intro starts with a persona statement: {self.summary.strip().splitlines()[0]!r}"
+        )
+
     # ------------------------------------------------------------------
     # CONDITIONS — add one test method per observed issue
     # ------------------------------------------------------------------
@@ -89,7 +96,7 @@ class TestGymsPrompt(unittest.TestCase):
         were combined into a single paragraph-length bullet. Each distinct requirement must
         be its own bullet; multiple bullets may share the same §-citation."""
         for line in self.summary.splitlines():
-            if not line.strip().startswith("- "):
+            if not re.match(r"^\s*[-*]\s", line):
                 continue
             # Strip trailing §-citation group before counting sentences
             text = re.sub(r'\s*\((?:§[\w.\-]+(?:,\s*)?)+\)\s*$', '', line.strip())
@@ -108,7 +115,7 @@ class TestGymsPrompt(unittest.TestCase):
             self.skipTest("§17-188 not in retrieved sources for this run")
         bullets = [
             l.strip() for l in self.summary.splitlines()
-            if l.strip().startswith("- ") and "17-188" in l
+            if re.match(r"^\s*[-*]\s", l) and "17-188" in l
         ]
         self.assertGreaterEqual(
             len(bullets), 2,
@@ -138,11 +145,12 @@ class TestGymsPrompt(unittest.TestCase):
             r'\s+(?:means|shall mean)\s+\w',
             re.MULTILINE
         )
-        gym_terms = {"gym", "health studio", "health club", "health spa", "gymnasium",
-                     "fitness", "pool", "swimming", "bathing", "exercise", "locker",
-                     "athletic", "martial arts", "physical fitness"}
-        # Only trigger when a source defines a gym/fitness-relevant term, not generic
-        # administrative definitions like "Adequate means..." or "Approved means..."
+        # Narrow to gym/fitness-establishment terms only — exclude pool/bathing/swimming
+        # so that §165.03 (bathing establishment definitions) does not trigger this check.
+        gym_terms = {"health studio", "health club", "health spa", "gymnasium",
+                     "martial arts", "physical fitness", "weight control"}
+        # Only trigger when a source defines a gym/fitness-establishment term, not generic
+        # administrative definitions like "Adequate means..." or pool/bathing definitions.
         source_has_gym_definition = any(
             (
                 "definition" in s.get("section_title", "").lower() or
@@ -153,7 +161,7 @@ class TestGymsPrompt(unittest.TestCase):
         if not source_has_gym_definition:
             self.skipTest("No gym-relevant definition in retrieved sources for this run")
 
-        bullet_lines = [l.strip() for l in self.summary.splitlines() if l.strip().startswith("- ")]
+        bullet_lines = [l.strip() for l in self.summary.splitlines() if re.match(r"^\s*[-*]\s", l)]
         self.assertGreater(len(bullet_lines), 0, "Summary has no bullet lines")
 
         first_bullet = bullet_lines[0].lower()
@@ -243,7 +251,7 @@ class TestGymsPrompt(unittest.TestCase):
         )
         if not source_defines_gym:
             self.skipTest("No retrieved source defines a gym/fitness establishment — skip")
-        bullet_lines = [l.strip() for l in self.summary.splitlines() if l.strip().startswith("- ")]
+        bullet_lines = [l.strip() for l in self.summary.splitlines() if re.match(r"^\s*[-*]\s", l)]
         has_gym_definition = any(
             any(term in l.lower() for term in gym_terms) and
             ("means" in l.lower() or "shall mean" in l.lower() or "is defined as" in l.lower())

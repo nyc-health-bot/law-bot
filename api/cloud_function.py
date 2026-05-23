@@ -183,7 +183,7 @@ def _cached_pinecone_query(query_text: str) -> list[dict]:
 # --- GEMINI HELPERS ---
 
 def _gemini_generate(payload: dict) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
     for attempt in range(5):
         resp = requests.post(url, json=payload, timeout=120)
         if resp.status_code in (429, 503):
@@ -261,7 +261,7 @@ def _join_chunk_bodies(texts: list[str]) -> str:
     result = bodies[0]
     for body in bodies[1:]:
         if result and body and result[-1].isalpha() and body[0].islower():
-            result += body          # mid-word: join with no separator
+            result += " " + body    # word-boundary split: rejoin with space
         else:
             result += "\n\n" + body
     return result
@@ -295,7 +295,7 @@ def _gemini_generate_streamed(payload: dict) -> dict:
     """Calls Gemini via streaming SSE and assembles the full response dict.
     Use instead of _gemini_generate when the prompt is large and read timeout is a risk.
     timeout tuple: (connect_seconds, read_seconds) — read applies per chunk."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
     for attempt in range(5):
         resp = requests.post(url, json=payload, timeout=(30, 180), stream=True)
         if resp.status_code in (429, 503):
@@ -323,7 +323,7 @@ def _gemini_generate_streamed(payload: dict) -> dict:
 
 def _gemini_stream(payload: dict):
     """Yields text chunks from Gemini streaming API."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
     for attempt in range(3):
         resp = requests.post(url, json=payload, timeout=60, stream=True)
         if resp.status_code in (429, 503):

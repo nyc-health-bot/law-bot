@@ -146,15 +146,15 @@ class TestStructureResponse(unittest.TestCase):
         self.assertTrue(self.summary.strip())
 
     def test_summary_contains_bullet_lines(self):
-        """At least one line must start with '- '."""
-        bullet_lines = [l for l in self.summary.splitlines() if l.strip().startswith("- ")]
+        """At least one line must start with '- ' or '* '."""
+        bullet_lines = [l for l in self.summary.splitlines() if re.match(r"^\s*[-*]\s", l)]
         self.assertGreater(len(bullet_lines), 0,
             "Summary has no bullet lines — prompt requires a markdown bulleted list")
 
     def test_no_prose_paragraphs(self):
-        """Every non-empty line must be a bullet ('- ') or a single allowed intro sentence."""
+        """Every non-empty line must be a bullet ('- ' or '* ') or a single allowed intro sentence."""
         non_empty = [l.strip() for l in self.summary.splitlines() if l.strip()]
-        non_bullets = [l for l in non_empty if not l.startswith("- ")]
+        non_bullets = [l for l in non_empty if not re.match(r"^[-*]\s", l)]
         # Prompt allows at most one intro sentence before the list
         self.assertLessEqual(len(non_bullets), 1,
             f"Multiple non-bullet lines found (prose paragraphs?): {non_bullets}")

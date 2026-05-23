@@ -95,16 +95,18 @@ const CODE_FILES = {
 };
 const sectionCache = {};  // filename -> { section: fullText }
 
-const form        = document.getElementById('search-form');
-const input       = document.getElementById('question');
-const loadingEl   = document.getElementById('loading');
-const slowMsgEl   = document.getElementById('slow-msg');
-const errorEl     = document.getElementById('error');
-const errorMsg    = document.getElementById('error-msg');
-const resultsEl   = document.getElementById('results');
-const summaryEl   = document.getElementById('summary');
-const citationsEl = document.getElementById('citations');
-const additionalEl = document.getElementById('additional');
+const form             = document.getElementById('search-form');
+const input            = document.getElementById('question');
+const loadingEl        = document.getElementById('loading');
+const slowMsgEl        = document.getElementById('slow-msg');
+const errorEl          = document.getElementById('error');
+const errorMsg         = document.getElementById('error-msg');
+const resultsEl        = document.getElementById('results');
+const summaryEl        = document.getElementById('summary');
+const summaryPendingEl = document.getElementById('summary-pending');
+const citationsEl      = document.getElementById('citations');
+const citationsSection = document.getElementById('citations-section');
+const additionalEl     = document.getElementById('additional');
 const additionalSection = document.getElementById('additional-section');
 
 form.addEventListener('submit', async (e) => {
@@ -146,8 +148,10 @@ form.addEventListener('submit', async (e) => {
           citations = event.citations;
           setLoading(false);
           renderCitationShells(citations);
+          summaryPendingEl.hidden = false;
           resultsEl.hidden = false;
         } else if (event.type === 'chunk') {
+          summaryPendingEl.hidden = true;
           rawSummary += event.text;
           summaryEl.textContent = rawSummary;
         } else if (event.type === 'done') {
@@ -205,10 +209,13 @@ function finalizeSummary(summary, citedSections, citations) {
     });
   });
 
+  summaryPendingEl.hidden = true;
+
   const citedList      = citations.filter(c => cited.has(c.section));
   const additionalList = citations.filter(c => !cited.has(c.section));
 
   citationsEl.innerHTML = '';
+  citationsSection.hidden = citedList.length === 0;
   citedList.forEach(c => { c.cited_in_summary = true; citationsEl.appendChild(makeCard(c)); });
 
   additionalEl.innerHTML = '';
@@ -385,7 +392,9 @@ function showError(msg) {
 function clearResults() {
   errorEl.hidden = true;
   resultsEl.hidden = true;
+  summaryPendingEl.hidden = true;
   summaryEl.innerHTML = '';
   citationsEl.innerHTML = '';
+  citationsSection.hidden = true;
   additionalEl.innerHTML = '';
 }

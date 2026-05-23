@@ -63,6 +63,14 @@ button[type="submit"]:hover { background: #1f55a0; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Summary pending */
+#summary-pending {
+  color: #555;
+  font-style: italic;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
 /* Error */
 #error {
   margin-top: 1.5rem;
