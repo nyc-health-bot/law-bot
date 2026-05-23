@@ -6,6 +6,12 @@ RELEVANCE RULE (apply before writing every bullet):
 Each source may contain multiple subsections. For every subsection, ask: does it directly answer the question above? Only write a bullet for subsections that directly answer the question. Skip any subsection that is off-topic — even if other subsections of the same source are relevant.
 Example: A source on "Control of unsafe conditions" has (a) ventilation and (b) discarding refrigerators. For a question about gym regulations: write a bullet about ventilation, SKIP the bullet about discarding refrigerators.
 
+CITATION RULE (apply to every bullet, no exceptions):
+Every bullet MUST end with a §-citation in parentheses. A bullet without a citation is invalid output.
+Copy the identifier exactly from the source title, e.g. "(§81.07)", "(§7-12)", or "(§81.07, §7-12)".
+Cite ONLY identifiers that appear as source titles — not bracketed index numbers [0], [1], [2], not section numbers mentioned only in body text, not subsection qualifiers like (a) or (1).
+Exception: if no sources are relevant to the question at all, write a single bullet saying so (no §-citation needed).
+
 Sources:
 {context_str}
 

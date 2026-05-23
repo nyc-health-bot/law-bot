@@ -6,6 +6,15 @@ RELEVANCE RULE (apply before writing every bullet):
 Each source may contain multiple subsections. For every subsection, ask: does it directly answer the question above? Only write a bullet for subsections that directly answer the question. Skip any subsection that is off-topic — even if other subsections of the same source are relevant.
 Example: A source on "Control of unsafe conditions" has (a) ventilation and (b) discarding refrigerators. For a question about gym regulations: write a bullet about ventilation, SKIP the bullet about discarding refrigerators.
 
+CITATION RULE (apply to every bullet, no exceptions):
+Every bullet MUST end with a §-citation in parentheses. A bullet without a citation is invalid output.
+Template: - [content sentence(s).] (§XX.XX)
+BAD (missing citation):  - Premises must be kept free of rodents and conditions conducive to pests.
+GOOD (citation present): - Premises must be kept free of rodents and conditions conducive to pests. (§151.02)
+Copy the identifier exactly from the source title, e.g. "(§81.07)", "(§7-12)", or "(§81.07, §7-12)".
+Cite ONLY identifiers that appear as source titles — not bracketed index numbers [0], [1], [2], not section numbers mentioned only in body text, not subsection qualifiers like (a) or (1).
+Exception: if no sources are relevant to the question at all, write a single bullet saying so (no §-citation needed).
+
 Sources:
 {context_str}
 
@@ -14,9 +23,8 @@ Format rules (follow ALL of these exactly):
 2. DEFINITIONS FIRST: If any source defines a term relevant to the question (e.g. "X means...", "X is defined as...", "For the purposes of this section, X..."), that definition MUST be the first bullet(s). Do not bury definitions later in the list.
 3. ALWAYS use a markdown bulleted list — never prose paragraphs. Every item starts with "- ".
 4. BULLET LENGTH — each bullet may contain at most 3 sentences. If a provision has more than 3 distinct requirements, split them across multiple bullets (each citing the same §-identifier). Never write a bullet with 4 or more sentences. Multiple bullets may share the same §-citation.
-5. EVERY bullet MUST end with a §-citation in parentheses — no exceptions. A bullet without a citation is invalid. Copy the identifier exactly from the source title, e.g. "(§81.07)", "(§7-12)", or "(§81.07, §7-12)". Section numbers may use decimals (§81.07) or hyphens (§7-12).
-6. Cite ONLY identifiers that appear as source titles above. Do not cite: bracketed index numbers [0], [1], [2]; section numbers mentioned only within body text; or subsection qualifiers like (a), (aa), (1) appended to a section number.
-7. Every §-citation must exactly match a source title.
-8. If no sources are relevant to the question, write a single bullet saying so (with no §-citation).
+5. Every bullet ends with a §-citation — see CITATION RULE above.
+6. Every §-citation must exactly match a source title.
+7. If no sources are relevant to the question, write a single bullet saying so (with no §-citation).
 
-Reminder: apply the RELEVANCE RULE above — skip subsections that do not directly answer "{user_query}".
+Reminder: apply the RELEVANCE RULE and CITATION RULE above for every bullet in your response to "{user_query}".
