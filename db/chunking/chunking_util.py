@@ -28,8 +28,19 @@ def split_text(text: str, max_chars: int) -> list[str]:
             if current:
                 chunks.append(current.strip())
             if len(part) > max_chars:
-                for i in range(0, len(part), max_chars):
-                    chunks.append(part[i:i + max_chars].strip())
+                start = 0
+                while start < len(part):
+                    end = start + max_chars
+                    if end >= len(part):
+                        chunks.append(part[start:].strip())
+                        break
+                    # Back up to the last word boundary so we never split mid-word
+                    while end > start and not part[end].isspace():
+                        end -= 1
+                    if end == start:
+                        end = start + max_chars  # no space found; force-split
+                    chunks.append(part[start:end].strip())
+                    start = end
                 current = ""
             else:
                 current = part

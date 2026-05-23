@@ -244,6 +244,29 @@ def _split_long_bullets(summary: str) -> str:
     return "\n".join(result)
 
 
+def _join_chunk_bodies(texts: list[str]) -> str:
+    """Join per-chunk body text, healing mid-word brute-force splits.
+
+    The chunker falls back to splitting at exactly max_chars when a paragraph
+    is too long, which can cut a word in half (e.g. 'de' / 'velopment').
+    Consecutive chunks that form a mid-word break are detected by: the
+    previous body ends with an alphabetic character AND the next body starts
+    with a lowercase alphabetic character (i.e. continues a word rather than
+    starting a new sentence or subsection).  Those are joined with no
+    separator; all other consecutive bodies are joined with '\n\n'.
+    """
+    bodies = [t.split("\n\n", 1)[1] if "\n\n" in t else t for t in texts]
+    if not bodies:
+        return ""
+    result = bodies[0]
+    for body in bodies[1:]:
+        if result and body and result[-1].isalpha() and body[0].islower():
+            result += body          # mid-word: join with no separator
+        else:
+            result += "\n\n" + body
+    return result
+
+
 def _build_sources(matches: list[dict]) -> list[dict]:
     seen = {}
     for m in matches:
@@ -263,10 +286,7 @@ def _build_sources(matches: list[dict]) -> list[dict]:
         {**{k: v for k, v in entry.items() if k != "texts"},
          "text": "\n\n".join(entry["texts"]),
          "summary_text": "\n\n".join(entry["texts"])[:2500],
-         "passage_text": "\n\n".join(
-             t.split("\n\n", 1)[1] if "\n\n" in t else t
-             for t in entry["texts"]
-         )}
+         "passage_text": _join_chunk_bodies(entry["texts"])}
         for entry in seen.values()
     ]
 
