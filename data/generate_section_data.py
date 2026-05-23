@@ -48,6 +48,21 @@ def reflow_nyc_health(text: str) -> str:
     return "\n".join(out)
 
 
+def format_admin_body(body: str) -> str:
+    """Break flat NYC Admin Code text at lettered subdivisions, numbered items, and roman-numeral sub-items."""
+    # Lettered subdivisions (a. b. c. …) after sentence end
+    body = re.sub(r'\. ([a-n])\. (?=[A-Z])', lambda m: '.\n' + m.group(1) + '. ', body)
+    # Numbered items: after colon or period, digit, period, open-quote
+    body = re.sub(r'([:.]) (\d+)\. "', lambda m: m.group(1) + '\n   ' + m.group(2) + '. "', body)
+    # Roman-numeral sub-items
+    _roman = r'[ivxlcdm]+'
+    body = re.sub(r'; and \((' + _roman + r')\) ', r'; and\n      (\1) ', body)
+    body = re.sub(r'; or \((' + _roman + r')\) ', r'; or\n      (\1) ', body)
+    body = re.sub(r'; \((' + _roman + r')\) ', r';\n      (\1) ', body)
+    body = re.sub(r': \((' + _roman + r')\) ', r':\n      (\1) ', body)
+    return body.strip()
+
+
 def format_nys_body(body: str, section: str, title: str) -> str:
     """Strip repeated section header and insert newlines at subsection markers."""
     # NYS bodies often open with "§num Title." — strip it to avoid duplication
@@ -113,7 +128,7 @@ for f in sorted((ROOT / "data/scrapers/nyc-admin-code/data").glob("*.json")):
         sec_num = section.get("section", "").strip()
         if not sec_num:
             continue
-        body = section.get("text", "").strip()
+        body = format_admin_body(section.get("text", "").strip())
         nyc_admin[sec_num] = full_text(section.get("title", "").strip(), body)
 
 (OUT_DIR / "nyc-admin-code.json").write_text(
