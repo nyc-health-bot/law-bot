@@ -553,13 +553,18 @@ def handle_request(request):
         try:
             token, expires = _generate_token(email)
             _send_magic_link(email, token, expires)
+            print(f"send-link sent: {email}")
             return (json.dumps({"ok": True}), 200, json_headers)
         except Exception as e:
-            print(f"send-link error: {e}")
+            print(f"send-link error ({email}): {e}")
             return (json.dumps({"error": "Failed to send email. Please try again."}), 500, json_headers)
 
     if req_type == "verify-token":
         result = _validate_token(body.get("token", ""))
+        if result["valid"]:
+            print(f"verify-token: {result['email']}")
+        else:
+            print(f"verify-token failed: {result['reason']}")
         return (json.dumps(result), 200, json_headers)
 
     sse_headers = {
@@ -582,6 +587,7 @@ def handle_request(request):
     # Run Pinecone lookup before opening the stream so errors return cleanly
     try:
         user_input = body.get("prompt", "")
+        print(f"prompt ({token_result['email']}): {user_input}")
         matches = _cached_pinecone_query(user_input)
     except requests.exceptions.Timeout:
         def _timeout():
