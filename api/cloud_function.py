@@ -560,12 +560,8 @@ def handle_request(request):
             return (json.dumps({"error": "Failed to send email. Please try again."}), 500, json_headers)
 
     if req_type == "verify-token":
-        result = _validate_token(body.get("token", ""))
-        if result["valid"]:
-            print(f"verify-token: {result['email']}")
-        else:
-            print(f"verify-token failed: {result['reason']}")
-        return (json.dumps(result), 200, json_headers)
+        # AUTH TEMPORARILY DISABLED — always return valid
+        return (json.dumps({"valid": True, "email": "anonymous"}), 200, json_headers)
 
     sse_headers = {
         **cors_headers,
@@ -577,12 +573,8 @@ def handle_request(request):
     def _sse(obj):
         return f"data: {json.dumps(obj)}\n\n"
 
-    # Validate auth token before doing any work
-    token_result = _validate_token(body.get("token", ""))
-    if not token_result["valid"]:
-        def _auth_err():
-            yield _sse({"type": "auth_error", "reason": token_result["reason"]})
-        return Response(_auth_err(), headers=sse_headers)
+    # AUTH TEMPORARILY DISABLED — skip token validation
+    token_result = {"valid": True, "email": "anonymous"}
 
     # Run Pinecone lookup before opening the stream so errors return cleanly
     try:

@@ -27,27 +27,9 @@ function showSearch(token) {
   searchSection.hidden = false;
 }
 
+// AUTH TEMPORARILY DISABLED — skip login gate
 (async function initAuth() {
-  const token = new URLSearchParams(window.location.search).get('token');
-  if (!token) { showAuthGate(); return; }
-
-  try {
-    const resp = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'verify-token', token }),
-    });
-    const data = await resp.json();
-    if (data.valid) {
-      showSearch(token);
-    } else if (data.reason === 'expired') {
-      showAuthGate('Your access link has expired. Enter your email to request a new one.');
-    } else {
-      showAuthGate('Invalid access link. Enter your email to request a new one.');
-    }
-  } catch {
-    showAuthGate('Could not verify your access link. Enter your email to request a new one.');
-  }
+  showSearch('disabled');
 })();
 
 authFormEl.addEventListener('submit', async (e) => {
