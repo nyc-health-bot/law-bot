@@ -183,6 +183,75 @@ mark {
 #auth-msg.success { background: #edfaf1; border-left: 4px solid #27ae60; color: #1e6b3a; }
 #auth-msg.error   { background: #fdecea; border-left: 4px solid #c0392b; color: #c0392b; }
 
+/* Feedback / star rating */
+#feedback-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+}
+.feedback-label {
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.4rem;
+}
+.star-rating {
+  display: flex;
+  gap: 0.15rem;
+  margin-bottom: 0.75rem;
+}
+.star {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  color: #ccc;
+  cursor: pointer;
+  padding: 0 0.1rem;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.star.lit { color: #f5a623; }
+.star:disabled { cursor: default; }
+.feedback-response { margin-top: 0.5rem; }
+.feedback-thanks { font-size: 0.9rem; color: #27ae60; }
+.feedback-form-heading {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+.feedback-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+.feedback-radio-row {
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.feedback-textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+  margin-bottom: 0.5rem;
+}
+.feedback-submit {
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  background: #2a6ebb;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.feedback-submit:hover { background: #1f55a0; }
+
 footer {
   margin-top: 4rem;
   padding-top: 1.5rem;

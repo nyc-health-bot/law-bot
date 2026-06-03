@@ -1,8 +1,17 @@
 const API_URL = 'https://us-east1-nyc-health-law-bot.cloudfunctions.net/law-bot';
 
+// --- SESSION ---
+
+let _sessionId = sessionStorage.getItem('session_id');
+if (!_sessionId) {
+  _sessionId = crypto.randomUUID();
+  sessionStorage.setItem('session_id', _sessionId);
+}
+
 // --- AUTH ---
 
 let _authToken = null;
+let _lastPrompt = '';
 
 const authGateEl     = document.getElementById('auth-gate');
 const searchSection  = document.getElementById('search-section');
@@ -101,6 +110,7 @@ form.addEventListener('submit', async (e) => {
 
   let citations = [];
   let rawSummary = '';
+  _lastPrompt = question;
 
   try {
     const resp = await fetch(API_URL, {
@@ -140,6 +150,7 @@ form.addEventListener('submit', async (e) => {
           finalizeSummary(event.summary, event.cited_sections, citations);
         } else if (event.type === 'passages') {
           applyPassages(citations, event.passages);
+          renderFeedback();
         } else if (event.type === 'auth_error') {
           setLoading(false);
           const msg = event.reason === 'expired'
@@ -379,4 +390,143 @@ function clearResults() {
   citationsEl.innerHTML = '';
   citationsSection.hidden = true;
   additionalEl.innerHTML = '';
+  const fb = document.getElementById('feedback-section');
+  if (fb) fb.remove();
+}
+
+// --- FEEDBACK ---
+
+function renderFeedback() {
+  const existing = document.getElementById('feedback-section');
+  if (existing) existing.remove();
+
+  const section = document.createElement('section');
+  section.id = 'feedback-section';
+
+  const label = document.createElement('p');
+  label.className = 'feedback-label';
+  label.textContent = 'Was this answer helpful?';
+
+  const starsEl = document.createElement('div');
+  starsEl.className = 'star-rating';
+
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'star';
+    star.dataset.value = i;
+    star.textContent = '★';
+    star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+    star.addEventListener('mouseover', () => highlightStars(starsEl, i));
+    star.addEventListener('mouseout', () => highlightStars(starsEl, starsEl.dataset.rating || 0));
+    star.addEventListener('click', () => selectRating(section, starsEl, i));
+    starsEl.appendChild(star);
+  }
+
+  section.appendChild(label);
+  section.appendChild(starsEl);
+  resultsEl.appendChild(section);
+}
+
+function highlightStars(container, count) {
+  count = parseInt(count) || 0;
+  container.querySelectorAll('.star').forEach((s, idx) => {
+    s.classList.toggle('lit', idx < count);
+  });
+}
+
+function selectRating(section, starsEl, rating) {
+  starsEl.dataset.rating = rating;
+  highlightStars(starsEl, rating);
+  starsEl.querySelectorAll('.star').forEach(s => s.disabled = true);
+
+  const existing = section.querySelector('.feedback-response');
+  if (existing) existing.remove();
+
+  if (rating <= 3) {
+    renderFeedbackForm(section, rating);
+  } else {
+    const thanks = document.createElement('p');
+    thanks.className = 'feedback-response feedback-thanks';
+    thanks.textContent = 'Thank you for the feedback!';
+    section.appendChild(thanks);
+    submitFeedback(rating, '', '');
+  }
+}
+
+function renderFeedbackForm(section, rating) {
+  const form = document.createElement('div');
+  form.className = 'feedback-response feedback-form';
+
+  const heading = document.createElement('p');
+  heading.className = 'feedback-form-heading';
+  heading.textContent = 'Help us improve — what went wrong?';
+
+  const reasons = [
+    ['wrong',      'The answer was wrong or misleading'],
+    ['missing',    'Important information was missing'],
+    ['unanswered', "It didn't answer my question"],
+    ['confusing',  'The format was hard to follow'],
+    ['other',      'Something else'],
+  ];
+
+  const radioGroup = document.createElement('div');
+  radioGroup.className = 'feedback-radios';
+  for (const [value, labelText] of reasons) {
+    const row = document.createElement('label');
+    row.className = 'feedback-radio-row';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'feedback-reason';
+    input.value = value;
+    row.appendChild(input);
+    row.appendChild(document.createTextNode(' ' + labelText));
+    radioGroup.appendChild(row);
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'feedback-textarea';
+  textarea.placeholder = 'Anything else? (optional)';
+  textarea.rows = 3;
+
+  const submitBtn = document.createElement('button');
+  submitBtn.type = 'button';
+  submitBtn.className = 'feedback-submit';
+  submitBtn.textContent = 'Send feedback';
+  submitBtn.addEventListener('click', () => {
+    const selected = form.querySelector('input[name="feedback-reason"]:checked');
+    const reason = selected ? selected.value : '';
+    const comment = textarea.value.trim();
+    submitFeedback(rating, reason, comment);
+    form.innerHTML = '';
+    const thanks = document.createElement('p');
+    thanks.className = 'feedback-thanks';
+    thanks.textContent = 'Thank you — your feedback helps us improve.';
+    form.appendChild(thanks);
+  });
+
+  form.appendChild(heading);
+  form.appendChild(radioGroup);
+  form.appendChild(textarea);
+  form.appendChild(submitBtn);
+  section.appendChild(form);
+}
+
+async function submitFeedback(rating, reason, comment) {
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'feedback',
+        session_id: _sessionId,
+        prompt: _lastPrompt,
+        rating,
+        reason,
+        comment,
+      }),
+    });
+  } catch {
+    // best-effort; ignore network errors
+  }
 }

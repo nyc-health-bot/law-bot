@@ -24,6 +24,7 @@ TOKEN_SECRET = os.environ.get("TOKEN_SECRET", "")
 GMAIL_USER = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 APP_URL = os.environ.get("APP_URL", "https://mporter-dohmh.github.io/law-bot")
+FEEDBACK_SHEET_ID = os.environ.get("FEEDBACK_SHEET_ID", "")
 
 _NY_TZ = ZoneInfo("America/New_York")
 PROMPT_BUCKET = os.environ.get("PROMPT_BUCKET")
@@ -98,6 +99,27 @@ def _fetch_prompt(name: str) -> str:
     )
     resp.raise_for_status()
     return resp.content.decode('utf-8')
+
+
+def _append_feedback_row(session_id: str, prompt: str, rating: int, reason: str, comment: str) -> None:
+    token_resp = requests.get(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+        headers={"Metadata-Flavor": "Google"},
+        timeout=5,
+    )
+    token = token_resp.json()["access_token"]
+    now = datetime.now(tz=_NY_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    url = (
+        f"https://sheets.googleapis.com/v4/spreadsheets/{FEEDBACK_SHEET_ID}"
+        f"/values/A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS"
+    )
+    resp = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"values": [[now, session_id, prompt, rating, reason, comment]]},
+        timeout=15,
+    )
+    resp.raise_for_status()
 
 
 def _get_prompt(name: str) -> str:
@@ -558,6 +580,21 @@ def handle_request(request):
         except Exception as e:
             print(f"send-link error ({email}): {e}")
             return (json.dumps({"error": "Failed to send email. Please try again."}), 500, json_headers)
+
+    if req_type == "feedback":
+        try:
+            _append_feedback_row(
+                session_id=body.get("session_id", ""),
+                prompt=body.get("prompt", ""),
+                rating=int(body.get("rating", 0)),
+                reason=body.get("reason", ""),
+                comment=body.get("comment", ""),
+            )
+            print(f"feedback: rating={body.get('rating')} session={str(body.get('session_id', ''))[:8]}")
+            return (json.dumps({"ok": True}), 200, json_headers)
+        except Exception as e:
+            print(f"feedback error: {e}")
+            return (json.dumps({"error": str(e)}), 500, json_headers)
 
     if req_type == "verify-token":
         # AUTH TEMPORARILY DISABLED — always return valid
