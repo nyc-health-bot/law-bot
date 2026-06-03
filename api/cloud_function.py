@@ -24,7 +24,7 @@ TOKEN_SECRET = os.environ.get("TOKEN_SECRET", "")
 GMAIL_USER = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 APP_URL = os.environ.get("APP_URL", "https://mporter-dohmh.github.io/law-bot")
-FEEDBACK_SHEET_ID = os.environ.get("FEEDBACK_SHEET_ID", "")
+FEEDBACK_SHEET_ID = os.environ.get("FEEDBACK_SHEET_ID", "13zOvfvc5ScO_YKUsazYg9-N3qT8nSxzr3ZVRwM-spfU")
 
 _NY_TZ = ZoneInfo("America/New_York")
 PROMPT_BUCKET = os.environ.get("PROMPT_BUCKET")
