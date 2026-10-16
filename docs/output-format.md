@@ -96,7 +96,6 @@ The backend streams a sequence of Server-Sent Events:
 | 2…N | `chunk` | `{text: "..."}` | Append to plain-text summary display |
 | N+1 | `done` | `{summary: "...", cited_sections: [...]}` | Replace with rendered markdown + §-links; split cards into Citations / Additional |
 | N+2 | `passages` | `{passages: {index: [quotes]}}` | Apply highlights; re-render any already-expanded cards |
-| — | `auth_error` | `{reason: "expired"\|"invalid"}` | Drop user back to auth gate with message |
 | — | `error` | `{message: "..."}` | Show error banner |
 
 ---

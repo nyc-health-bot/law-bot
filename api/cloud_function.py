@@ -1,15 +1,9 @@
-import base64
 import concurrent.futures
-import hashlib
-import hmac
 import json
 import os
 import re
-import smtplib
-import ssl
 import time
 from datetime import datetime
-from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
 
 import requests
@@ -20,60 +14,10 @@ GEMINI_KEY = os.environ.get("GOOGLE_API_KEY")
 PINECONE_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_HOST = os.environ.get("PINECONE_HOST")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
-TOKEN_SECRET = os.environ.get("TOKEN_SECRET", "")
-GMAIL_USER = os.environ.get("GMAIL_USER", "")
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-APP_URL = os.environ.get("APP_URL", "https://mporter-dohmh.github.io/law-bot")
 FEEDBACK_SHEET_ID = os.environ.get("FEEDBACK_SHEET_ID", "13zOvfvc5ScO_YKUsazYg9-N3qT8nSxzr3ZVRwM-spfU")
 
 _NY_TZ = ZoneInfo("America/New_York")
 PROMPT_BUCKET = os.environ.get("PROMPT_BUCKET")
-
-# --- AUTH ---
-
-def _generate_token(email: str) -> tuple[str, int]:
-    expires = int(time.time()) + 86400
-    payload = f"{email}|{expires}"
-    sig = hmac.new(TOKEN_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    b64 = base64.urlsafe_b64encode(payload.encode()).rstrip(b"=").decode()
-    return f"{b64}.{sig}", expires
-
-
-def _validate_token(token: str) -> dict:
-    try:
-        b64, sig = token.rsplit(".", 1)
-        padding = (4 - len(b64) % 4) % 4
-        payload = base64.urlsafe_b64decode(b64 + "=" * padding).decode()
-        expected = hmac.new(TOKEN_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
-            return {"valid": False, "reason": "invalid"}
-        email, expires_str = payload.rsplit("|", 1)
-        if int(time.time()) > int(expires_str):
-            return {"valid": False, "reason": "expired"}
-        return {"valid": True, "email": email}
-    except Exception:
-        return {"valid": False, "reason": "invalid"}
-
-
-def _send_magic_link(email: str, token: str, expires: int) -> None:
-    expires_dt = datetime.fromtimestamp(expires, tz=_NY_TZ)
-    expires_str = expires_dt.strftime("%-I:%M %p ET on %B %-d, %Y")
-    link = f"{APP_URL}?token={token}"
-    body = (
-        f"You requested access to the NYC DOHMH Law Bot.\n\n"
-        f"Click the link below to access the tool:\n{link}\n\n"
-        f"This link will expire at {expires_str}.\n\n"
-        f"Do not share this link — it is intended for your use only.\n\n"
-        f"If you did not request this link, please ignore this email."
-    )
-    msg = MIMEText(body)
-    msg["Subject"] = "NYC Health Law Bot Access Link"
-    msg["From"] = GMAIL_USER
-    msg["To"] = email
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as server:
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, [email], msg.as_string())
-
 
 # --- PROMPT CACHE (TTL 60s — update prompts via gsutil cp, no redeploy needed) ---
 _prompt_cache: dict[str, tuple[str, float]] = {}
@@ -565,22 +509,6 @@ def handle_request(request):
     body = request.get_json(silent=True) or {}
     req_type = body.get("type")
 
-    if req_type == "send-link":
-        email = body.get("email", "").strip().lower()
-        if not email.endswith("@health.nyc.gov"):
-            return (
-                json.dumps({"error": "Access is restricted to NYC Dept of Health employees. Only @health.nyc.gov addresses are permitted."}),
-                403, json_headers,
-            )
-        try:
-            token, expires = _generate_token(email)
-            _send_magic_link(email, token, expires)
-            print(f"send-link sent: {email}")
-            return (json.dumps({"ok": True}), 200, json_headers)
-        except Exception as e:
-            print(f"send-link error ({email}): {e}")
-            return (json.dumps({"error": "Failed to send email. Please try again."}), 500, json_headers)
-
     if req_type == "feedback":
         try:
             _append_feedback_row(
@@ -596,10 +524,6 @@ def handle_request(request):
             print(f"feedback error: {e}")
             return (json.dumps({"error": str(e)}), 500, json_headers)
 
-    if req_type == "verify-token":
-        # AUTH TEMPORARILY DISABLED — always return valid
-        return (json.dumps({"valid": True, "email": "anonymous"}), 200, json_headers)
-
     sse_headers = {
         **cors_headers,
         "Content-Type": "text/event-stream",
@@ -610,21 +534,19 @@ def handle_request(request):
     def _sse(obj):
         return f"data: {json.dumps(obj)}\n\n"
 
-    # AUTH TEMPORARILY DISABLED — skip token validation
-    token_result = {"valid": True, "email": "anonymous"}
-
     # Run Pinecone lookup before opening the stream so errors return cleanly
     try:
         user_input = body.get("prompt", "")
-        print(f"prompt ({token_result['email']}): {user_input}")
+        print(f"prompt: {user_input}")
         matches = _cached_pinecone_query(user_input)
     except requests.exceptions.Timeout:
         def _timeout():
             yield _sse({"type": "error", "message": "The request timed out — the AI service is taking too long to respond. Please try again in a moment."})
         return Response(_timeout(), headers=sse_headers)
     except Exception as e:
+        err_msg = str(e)
         def _err():
-            yield _sse({"type": "error", "message": str(e)})
+            yield _sse({"type": "error", "message": err_msg})
         return Response(_err(), headers=sse_headers)
 
     if not matches:

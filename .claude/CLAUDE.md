@@ -40,8 +40,8 @@ bash deploy.sh
 `env.yaml` contains real secrets — it is gitignored. Copy `env.yaml.example` to set up. After any change to `cloud_function.py`, re-run the deploy.
 
 **Cloud Function:** `https://us-east1-nyc-health-law-bot.cloudfunctions.net/law-bot`  
-**GitHub Pages:** `https://mporter-dohmh.github.io/law-bot`  
-**CORS:** restricted to `https://mporter-dohmh.github.io` via `ALLOWED_ORIGIN` env var.
+**GitHub Pages:** `https://nyc-health-bot.github.io/law-bot`  
+**CORS:** restricted to `https://nyc-health-bot.github.io` via `ALLOWED_ORIGIN` env var.
 
 ## Data Sources
 

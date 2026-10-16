@@ -14,18 +14,7 @@
       <p class="subtitle">Search the NYC Health Code, NYC Admin Code, and NYS Sanitary Code</p>
     </header>
 
-    <!-- Auth gate: shown when no valid token -->
-    <section id="auth-gate" hidden>
-      <p class="auth-intro">This tool is for NYC Dept of Health employees. Enter your work email to receive a secure access link.</p>
-      <form id="auth-form" class="search-row">
-        <input id="auth-email" type="email" placeholder="your.name@health.nyc.gov" autocomplete="email" />
-        <button id="auth-submit" type="submit">Send Link</button>
-      </form>
-      <p id="auth-msg" hidden></p>
-    </section>
-
-    <!-- Search: shown when valid token present -->
-    <div id="search-section" hidden>
+    <div id="search-section">
       <form id="search-form">
         <div class="search-row">
           <input id="question" type="text" placeholder="e.g. Can you use plastic cutting boards in a restaurant?" autocomplete="off" />
