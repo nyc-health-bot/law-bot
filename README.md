@@ -147,3 +147,13 @@ Copy `.env.example` to `.env` and fill in real values. `deploy.sh` generates `ap
 | `ALLOWED_ORIGIN` | Frontend origin allowed by CORS (e.g. `https://nyc-health-bot.github.io`) |
 | `PROMPT_BUCKET` | GCS bucket name where prompt templates are stored |
 | `FEEDBACK_SHEET_ID` | Google Sheet ID that ratings are appended to |
+
+---
+
+## About
+
+This project was built by Michael Porter entirely on his own personal time and using his own personal equipment. It is an independent project and is not a product of, affiliated with, or endorsed by the City of New York, the New York City Department of Health and Mental Hygiene, the New York State Department of Health, or any other governmental authority.
+
+## License
+
+Released under the [MIT License](LICENSE).
