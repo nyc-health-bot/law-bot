@@ -2,7 +2,7 @@
 
 A semantic search tool for the NYC Health Code, NYC Admin Code, NYS Sanitary Code, and NYC Rules. Ask a plain-English question; the app rewrites it into legal keywords, retrieves the most relevant sections from a Pinecone vector index, and uses Gemini to return a bulleted summary with inline §-citations and highlighted source passages.
 
-**Live app:** https://mporter-dohmh.github.io/law-bot
+**Live app:** https://nyc-health-bot.github.io/law-bot
 
 ---
 
@@ -144,11 +144,6 @@ Copy `.env.example` to `.env` and fill in real values. `deploy.sh` generates `ap
 | `GOOGLE_API_KEY` | Gemini API key |
 | `PINECONE_API_KEY` | Pinecone API key |
 | `PINECONE_HOST` | Pinecone index URL |
-| `ALLOWED_ORIGIN` | Frontend origin allowed by CORS (e.g. `https://mporter-dohmh.github.io`) |
-| `TOKEN_SECRET` | Signing secret for auth tokens (`openssl rand -hex 32`) |
+| `ALLOWED_ORIGIN` | Frontend origin allowed by CORS (e.g. `https://nyc-health-bot.github.io`) |
 | `PROMPT_BUCKET` | GCS bucket name where prompt templates are stored |
-| `SMTP_HOST` | SMTP server for sending auth email links |
-| `SMTP_PORT` | SMTP port |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASS` | SMTP password |
-| `FROM_EMAIL` | Sender address for auth emails |
+| `FEEDBACK_SHEET_ID` | Google Sheet ID that ratings are appended to |

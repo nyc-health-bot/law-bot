@@ -21,9 +21,6 @@ jobs:
           PINECONE_API_KEY: "${{ secrets.PINECONE_API_KEY }}"
           PINECONE_HOST: "${{ secrets.PINECONE_HOST }}"
           LOG_LEVEL: "${{ secrets.LOG_LEVEL }}"
-          TOKEN_SECRET: "${{ secrets.TOKEN_SECRET }}"
-          GMAIL_USER: "${{ secrets.GMAIL_USER }}"
-          GMAIL_APP_PASSWORD: "${{ secrets.GMAIL_APP_PASSWORD }}"
           FEEDBACK_SHEET_ID: "${{ secrets.FEEDBACK_SHEET_ID }}"
           EOF
 

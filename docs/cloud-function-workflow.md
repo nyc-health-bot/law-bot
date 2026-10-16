@@ -1,8 +1,6 @@
 # Cloud Function Workflow
 
-`api/cloud_function.py` is the single entry point for all backend logic. It is deployed as a Google Cloud Function (2nd gen) and handles three distinct request types from the browser.
-
-> **Auth status: currently disabled.** Magic link authentication is bypassed in both `app.js` (skips login gate, passes token `"disabled"`) and `cloud_function.py` (`verify-token` always returns valid, token validation in the search path is skipped). Prompt logs will show `anonymous` as the user. See [Re-enabling auth](#re-enabling-auth) below.
+`api/cloud_function.py` is the single entry point for all backend logic. It is deployed as a Google Cloud Function (2nd gen) and handles two request types from the browser.
 
 ---
 
@@ -12,68 +10,15 @@ Every request is an HTTP POST to the function URL. The function reads the JSON b
 
 ```
 POST /law-bot
-  ├── body.type == "send-link"    →  Auth: send magic link email
-  ├── body.type == "verify-token" →  Auth: validate a token (currently always returns valid)
-  └── (no type / body.prompt)    →  Search: run the query pipeline (SSE stream)
+  ├── body.type == "feedback"  →  Append a rating row to the feedback sheet
+  └── (no type / body.prompt) →  Search: run the query pipeline (SSE stream)
 ```
 
 CORS preflight (`OPTIONS`) is handled first and returns 204 with no body.
 
 ---
 
-## Request type 1 — `send-link`
-
-**Triggered when:** user submits the login form with their email address.
-
-```
-Browser                          Cloud Function                  Gmail SMTP
-  │                                    │                              │
-  │── POST {type:"send-link",          │                              │
-  │         email:"x@health.nyc.gov"} ─►                             │
-  │                                    │  validate @health.nyc.gov    │
-  │                                    │  _generate_token(email)      │
-  │                                    │    HMAC-SHA256 signature      │
-  │                                    │    24-hour expiry             │
-  │                                    │── sendmail ──────────────────►
-  │◄── {ok: true} ─────────────────────│                              │
-```
-
-**Token format:** `base64url(email|expires_unix_timestamp).hmac_sha256_hex`
-
-**Logged:** `send-link sent: x@health.nyc.gov` or `send-link error (x@health.nyc.gov): <reason>`
-
-**Validation:**
-- Email must end in `@health.nyc.gov` — all others receive a 403
-
----
-
-## Request type 2 — `verify-token`
-
-**Triggered when:** user opens the app with `?token=...` in the URL (i.e., clicks a magic link).
-
-```
-Browser                          Cloud Function
-  │                                    │
-  │── POST {type:"verify-token",       │
-  │         token:"<token>"} ──────────►
-  │                                    │  _validate_token(token)
-  │                                    │    decode base64 payload
-  │                                    │    recompute HMAC, compare
-  │                                    │    check expiry timestamp
-  │◄── {valid:true, email:"..."}  ─────│
-  │    or {valid:false, reason:"..."}  │
-```
-
-**Outcomes:**
-- `{valid: true, email: "x@health.nyc.gov"}` — token accepted, browser shows search UI
-- `{valid: false, reason: "expired"}` — 24-hour window passed, user must request a new link
-- `{valid: false, reason: "invalid"}` — bad signature or malformed token
-
-**Logged:** `verify-token: x@health.nyc.gov` or `verify-token failed: expired`
-
----
-
-## Request type 3 — Search query (SSE stream)
+## Search query (SSE stream)
 
 **Triggered when:** user submits a question in the search form.
 
@@ -84,10 +29,8 @@ This is the main pipeline. The response is a **Server-Sent Events (SSE) stream**
 ```
 Browser                          Cloud Function                 External APIs
   │                                    │
-  │── POST {prompt:"...",              │
-  │         token:"..."} ──────────────►
-  │                                    │  validate token
-  │                                    │  log: prompt (email): <text>
+  │── POST {prompt:"..."} ─────────────►
+  │                                    │  log: prompt: <text>
   │                                    │
   │                                    │  ① structure_question()
   │                                    │    Gemini rewrites query ──────────────► Gemini Flash
@@ -134,7 +77,6 @@ Browser                          Cloud Function                 External APIs
 | `done` | After full summary is assembled | `{summary: "markdown string", cited_sections: ["81.07", ...]}` |
 | `passages` | After passage extraction completes | `{passages: {"0": ["verbatim quote..."], "1": [...]}}` |
 | `error` | On any unhandled exception | `{message: "..."}` |
-| `auth_error` | On invalid/expired token | `{reason: "expired" \| "invalid"}` |
 
 ### Step-by-step detail
 
@@ -193,7 +135,6 @@ bash deploy_prompts.sh   # gsutil cp all prompts to GCS — live within 60 secon
 | No matches above 0.5 threshold | SSE `metadata` (empty) + `done` ("couldn't find any relevant sections") + `passages` (empty) |
 | Gemini stream error mid-summary | SSE `error` event; stream closes |
 | Passage extraction failure | Logged silently; `passages` event sent with empty dict |
-| Invalid/expired token | SSE `auth_error` event; browser redirects to login gate |
 
 ---
 
@@ -203,81 +144,16 @@ All events are written to Cloud Logging via `print()`:
 
 | Log line | Meaning |
 |---|---|
-| `send-link sent: x@health.nyc.gov` | Magic link email sent successfully |
-| `send-link error (x@health.nyc.gov): <err>` | SMTP failure |
-| `verify-token: x@health.nyc.gov` | Token validated (user logged in) |
-| `verify-token failed: expired` | Token expired |
-| `prompt (x@health.nyc.gov): <text>` | User submitted a query (shows `anonymous` while auth is disabled) |
+| `prompt: <text>` | User submitted a query |
+| `feedback: rating=N session=xxxxxxxx` | User submitted a rating |
 | `Pinecone returned N matches above threshold` | Retrieval result count |
 
 Query logs via gcloud:
 ```bash
 gcloud logging read \
-  "resource.type=cloud_run_revision AND (textPayload:\"send-link\" OR textPayload:\"verify-token\" OR textPayload:\"prompt (\")" \
+  "resource.type=cloud_run_revision AND (textPayload:\"prompt:\" OR textPayload:\"feedback:\")" \
   --project=nyc-health-law-bot \
   --freshness=24h \
   --format="table(timestamp,textPayload)"
 ```
 
----
-
-## Re-enabling auth
-
-Auth was disabled to allow open access during onboarding. To re-enable:
-
-**1. `app.js`** — restore the full `initAuth()` function:
-
-```js
-// Replace this:
-(async function initAuth() {
-  showSearch('disabled');
-})();
-
-// With this:
-(async function initAuth() {
-  const token = new URLSearchParams(window.location.search).get('token');
-  if (!token) { showAuthGate(); return; }
-  try {
-    const resp = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'verify-token', token }),
-    });
-    const data = await resp.json();
-    if (data.valid) {
-      showSearch(token);
-    } else if (data.reason === 'expired') {
-      showAuthGate('Your access link has expired. Enter your email to request a new one.');
-    } else {
-      showAuthGate('Invalid access link. Enter your email to request a new one.');
-    }
-  } catch {
-    showAuthGate('Could not verify your access link. Enter your email to request a new one.');
-  }
-})();
-```
-
-**2. `cloud_function.py`** — restore real token validation in two places:
-
-```python
-# verify-token handler — replace:
-return (json.dumps({"valid": True, "email": "anonymous"}), 200, json_headers)
-# with:
-result = _validate_token(body.get("token", ""))
-if result["valid"]:
-    print(f"verify-token: {result['email']}")
-else:
-    print(f"verify-token failed: {result['reason']}")
-return (json.dumps(result), 200, json_headers)
-
-# Search path — replace:
-token_result = {"valid": True, "email": "anonymous"}
-# with:
-token_result = _validate_token(body.get("token", ""))
-if not token_result["valid"]:
-    def _auth_err():
-        yield _sse({"type": "auth_error", "reason": token_result["reason"]})
-    return Response(_auth_err(), headers=sse_headers)
-```
-
-After both changes, deploy: `cd api/deploy && bash deploy.sh` (backend) and push `ui/app.js` to GitHub Pages (frontend).
