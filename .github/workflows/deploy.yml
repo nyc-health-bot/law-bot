@@ -24,6 +24,7 @@ jobs:
           TOKEN_SECRET: "${{ secrets.TOKEN_SECRET }}"
           GMAIL_USER: "${{ secrets.GMAIL_USER }}"
           GMAIL_APP_PASSWORD: "${{ secrets.GMAIL_APP_PASSWORD }}"
+          FEEDBACK_SHEET_ID: "${{ secrets.FEEDBACK_SHEET_ID }}"
           EOF
 
       # ── Generate env.yaml from .env ────────────────────────────────────────
